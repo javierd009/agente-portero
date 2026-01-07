@@ -11,7 +11,7 @@
 | Fase | Estado | Fecha Completada | Notas |
 |------|--------|------------------|-------|
 | **FASE 1: Supabase** | ✅ COMPLETADA | 2026-01-06 | Base de datos configurada con 9 tablas + seed data |
-| **FASE 2: Portainer/Contabo** | 🟡 EN PROGRESO | - | Listo para deployment |
+| **FASE 2: Portainer/Contabo** | ✅ PREPARADA | 2026-01-07 | GitHub Actions, Docker images, guías completas - **Listo para deployment** |
 | **FASE 3: Vercel Dashboard** | ⏳ PENDIENTE | - | Después de FASE 2 |
 
 ---
@@ -68,69 +68,76 @@ DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/post
 
 ---
 
-## 🟡 FASE 2: Portainer/Contabo Services - EN PROGRESO
+## ✅ FASE 2: Portainer/Contabo Services - PREPARACIÓN COMPLETA
 
 ### Estado Actual
-**Listo para deployment.** Repositorio GitHub configurado, DNS apuntando al servidor, guías y scripts preparados.
+**✅ TODO LISTO PARA DEPLOYMENT.** Repositorio GitHub configurado, imágenes Docker publicadas en ghcr.io, DNS configurados, guías y scripts preparados.
 
 **Servidor:** 147.93.147.12
 **Dominios configurados:**
-- api-portero.integratec-ia.com → 147.93.147.12
-- whatsapp-portero.integratec-ia.com → 147.93.147.12
-- voice-portero.integratec-ia.com → 147.93.147.12
-- evolution-portero.integratec-ia.com → 147.93.147.12
+- api-portero.integratec-ia.com → 147.93.147.12 ✅
+- whatsapp-portero.integratec-ia.com → 147.93.147.12 ✅
+- voice-portero.integratec-ia.com → 147.93.147.12 ✅
+- evolution-portero.integratec-ia.com → 147.93.147.12 ✅
+
+**Container Registry:**
+- ghcr.io/javierd009/agente-portero-backend:latest ✅
+- ghcr.io/javierd009/agente-portero-whatsapp:latest ✅
+- ghcr.io/javierd009/agente-portero-voice:latest ✅
 
 ### Tareas Completadas
 
 #### 2.1 Preparación Inicial
 - [x] Repositorio GitHub creado: https://github.com/javierd009/agente-portero
-- [x] Variables de entorno preparadas en `portainer.env`
-- [x] Docker Compose adaptado a infraestructura Portainer con Traefik
-- [x] Guía de deployment completa creada
-- [x] Scripts de verificación creados
+- [x] Variables de entorno preparadas en `.env.portainer`
+- [x] Docker Compose adaptado a infraestructura Portainer con Traefik + Swarm
 - [x] DNS configurados apuntando a servidor
 
-#### 2.2 Archivos de Deployment
-- [x] `docker-compose.portainer-build.yml` - Para primer deploy (build local)
-- [x] `docker-compose.portainer.yml` - Para deploys futuros (pull desde ghcr.io)
-- [x] `portainer.env` - Variables listas para copiar/pegar
-- [x] `GUIA_DEPLOYMENT_PORTAINER.md` - Pasos detallados
+#### 2.2 GitHub Actions & Docker Images
+- [x] GitHub Actions workflow configurado (`.github/workflows/build-images.yml`)
+- [x] Dockerfiles creados para todos los servicios (backend, whatsapp, voice)
+- [x] Dependencias corregidas (asyncio-ari → aioari)
+- [x] Build exitoso de las 3 imágenes ✅
+- [x] Imágenes publicadas en ghcr.io (públicas, no requieren autenticación)
+- [x] CI/CD configurado: Push a main → Auto-build → Auto-publish
+
+#### 2.3 Archivos de Deployment
+- [x] `docker-compose.portainer.yml` - Swarm-compatible con Traefik labels
+- [x] `.env.portainer` - Variables listas para copiar/pegar
+- [x] `PORTAINER_DEPLOYMENT.md` - Guía completa paso a paso ⭐
 - [x] `scripts/verify-deployment.sh` - Verificación automática
 - [x] `scripts/configure-evolution.sh` - Configuración WhatsApp
 
-### Tareas Pendientes
+### Tareas Pendientes (Usuario debe ejecutar)
 
-#### 2.3 Deploy Stack via Portainer
-- [ ] Login a Portainer (http://147.93.147.12:9000)
-- [ ] Crear nuevo Stack "agente-portero"
-- [ ] Repository: https://github.com/javierd009/agente-portero
-- [ ] Compose path: `docker-compose.portainer-build.yml`
-- [ ] Copiar variables desde `portainer.env`
-- [ ] Deploy stack
-- [ ] Esperar 5-10 minutos para build
+**📖 GUÍA COMPLETA:** Ver [PORTAINER_DEPLOYMENT.md](PORTAINER_DEPLOYMENT.md)
 
-#### 2.4 Verificar Servicios Running
-- [ ] Verificar 6 contenedores corriendo:
-  - [ ] `agente-portero-backend` (puerto 8000)
-  - [ ] `agente-portero-whatsapp` (puerto 8002)
-  - [ ] `agente-portero-voice` (puerto 8001)
-  - [ ] `agente-portero-evolution` (puerto 8080)
-  - [ ] `agente-portero-redis` (puerto 6379)
-  - [ ] `agente-portero-nginx` (puertos 80/443) - opcional
+#### 2.4 Deploy Stack via Portainer
+- [ ] Login a Portainer
+- [ ] Crear nuevo Stack "agente-portero" con **Web editor**
+- [ ] Pegar contenido de `docker-compose.portainer.yml`
+- [ ] Copiar variables desde `.env.portainer`
+- [ ] Click en **Deploy the stack**
+- [ ] Esperar a que Portainer descargue las imágenes desde ghcr.io
 
-#### 2.5 Health Checks
-- [ ] `http://[IP]:8000/health` - Backend API
-- [ ] `http://[IP]:8002/health` - WhatsApp Service
-- [ ] `http://[IP]:8001/health` - Voice Service (puede fallar sin Asterisk)
-- [ ] `http://[IP]:8080` - Evolution API Manager
+#### 2.5 Verificar Servicios Running
+- [ ] Verificar 4 servicios corriendo en Portainer:
+  - [ ] `backend` - Backend API
+  - [ ] `whatsapp-service` - WhatsApp Service
+  - [ ] `voice-service` - Voice Service
+  - [ ] `evolution-api` - Evolution API
 
-#### 2.6 Configurar Evolution API (CRÍTICO)
-- [ ] Abrir Evolution Manager `http://[IP]:8080`
-- [ ] Crear instancia `agente_portero`
-- [ ] Escanear QR con WhatsApp Business
+#### 2.6 Health Checks vía URLs públicas
+- [ ] `https://api-portero.integratec-ia.com/health` - Backend API
+- [ ] `https://whatsapp-portero.integratec-ia.com/health` - WhatsApp Service
+- [ ] `https://voice-portero.integratec-ia.com` - Voice Service
+- [ ] `https://evolution-portero.integratec-ia.com` - Evolution API
+
+#### 2.7 Configurar Evolution API WhatsApp (CRÍTICO)
+- [ ] Ejecutar: `bash scripts/configure-evolution.sh`
+- [ ] Escanear QR code con WhatsApp Business
 - [ ] Confirmar estado "Connected"
-- [ ] Configurar webhook: `http://whatsapp-service:8002/webhook`
-- [ ] Habilitar evento "messages.upsert"
+- [ ] Webhook se configurará automáticamente: `https://whatsapp-portero.integratec-ia.com/webhook`
 
 ### Servicios Docker
 
@@ -384,5 +391,5 @@ NEXT_PUBLIC_API_URL=http://[IP-CONTABO]:8000
 
 ---
 
-**Última actualización:** 2026-01-06
-**Próxima revisión:** Después de completar FASE 2
+**Última actualización:** 2026-01-07
+**Próxima revisión:** Después de deployment en Portainer (FASE 2)
