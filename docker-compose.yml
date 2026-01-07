@@ -1,0 +1,173 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: agente-portero-postgres
+    environment:
+      POSTGRES_DB: agente_portero
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agente-portero
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: agente-portero-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - agente-portero
+
+  # Backend API
+  backend:
+    build:
+      context: ./services/backend
+      dockerfile: Dockerfile
+    container_name: agente-portero-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL:-http://evolution-api:8080}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-agente-portero}
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      - evolution-api
+    restart: unless-stopped
+    networks:
+      - agente-portero
+
+  # Voice Service
+  voice-service:
+    build:
+      context: ./services/voice-service
+      dockerfile: Dockerfile
+    container_name: agente-portero-voice
+    environment:
+      - ASTERISK_ARI_URL=${ASTERISK_ARI_URL}
+      - ASTERISK_ARI_USER=${ASTERISK_ARI_USER}
+      - ASTERISK_ARI_PASSWORD=${ASTERISK_ARI_PASSWORD}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BACKEND_API_URL=http://backend:8000
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - agente-portero
+
+  # WhatsApp Service
+  whatsapp-service:
+    build:
+      context: ./services/whatsapp-service
+      dockerfile: Dockerfile
+    container_name: agente-portero-whatsapp
+    ports:
+      - "8002:8002"
+    environment:
+      - EVOLUTION_API_URL=http://evolution-api:8080
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-agente-portero}
+      - BACKEND_API_URL=http://backend:8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=${DEBUG:-true}
+    depends_on:
+      - backend
+      - redis
+      - evolution-api
+    restart: unless-stopped
+    networks:
+      - agente-portero
+
+  # Vision Service
+  vision-service:
+    build:
+      context: ./services/vision-service
+      dockerfile: Dockerfile
+    container_name: agente-portero-vision
+    ports:
+      - "8001:8001"
+    environment:
+      - HIKVISION_HOST=${HIKVISION_HOST}
+      - HIKVISION_PORT=${HIKVISION_PORT:-80}
+      - HIKVISION_USER=${HIKVISION_USER}
+      - HIKVISION_PASSWORD=${HIKVISION_PASSWORD}
+      - BACKEND_API_URL=http://backend:8000
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - agente-portero
+
+  # Dashboard (Next.js)
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+    container_name: agente-portero-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - agente-portero
+
+  # Evolution API (WhatsApp)
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: agente-portero-evolution
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_URL=http://evolution-api:8080
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=${DATABASE_URL}
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+    restart: unless-stopped
+    networks:
+      - agente-portero
+
+networks:
+  agente-portero:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  evolution_instances:
+  evolution_store:

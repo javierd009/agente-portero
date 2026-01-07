@@ -1,0 +1,273 @@
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+interface ApiOptions extends RequestInit {
+  tenantId?: string
+}
+
+export async function api<T>(
+  endpoint: string,
+  options: ApiOptions = {}
+): Promise<T> {
+  const { tenantId, ...fetchOptions } = options
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  }
+
+  if (tenantId) {
+    (headers as Record<string, string>)['X-Tenant-ID'] = tenantId
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...fetchOptions,
+    headers,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || `API Error: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+// Typed API functions
+export const apiClient = {
+  // Agents
+  getAgents: (tenantId: string) =>
+    api<Agent[]>('/api/v1/agents/', { tenantId }),
+
+  createAgent: (tenantId: string, data: AgentCreate) =>
+    api<Agent>('/api/v1/agents/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      tenantId,
+    }),
+
+  // Residents
+  getResidents: (tenantId: string, params?: { unit?: string }) => {
+    const query = params?.unit ? `?unit=${params.unit}` : ''
+    return api<Resident[]>(`/api/v1/access/residents${query}`, { tenantId })
+  },
+
+  createResident: (tenantId: string, data: ResidentCreate) =>
+    api<Resident>('/api/v1/access/residents', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      tenantId,
+    }),
+
+  // Access Logs
+  getAccessLogs: (tenantId: string, params?: { limit?: number }) => {
+    const query = params?.limit ? `?limit=${params.limit}` : ''
+    return api<AccessLog[]>(`/api/v1/access/logs${query}`, { tenantId })
+  },
+
+  // Visitors
+  getVisitors: (tenantId: string) =>
+    api<Visitor[]>('/api/v1/access/visitors', { tenantId }),
+
+  // Camera Events
+  getCameraEvents: (tenantId: string, params?: { limit?: number }) => {
+    const query = params?.limit ? `?limit=${params.limit}` : ''
+    return api<CameraEvent[]>(`/api/v1/camera-events/${query}`, { tenantId })
+  },
+
+  getRecentPlates: (tenantId: string) =>
+    api<{ plates: PlateDetection[] }>('/api/v1/camera-events/plates/recent', { tenantId }),
+
+  // Notifications
+  getNotifications: (tenantId: string) =>
+    api<Notification[]>('/api/v1/notifications/', { tenantId }),
+
+  // Reports
+  getReports: (tenantId: string, params?: { status?: string; report_type?: string; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.status) query.append('status', params.status)
+    if (params?.report_type) query.append('report_type', params.report_type)
+    if (params?.limit) query.append('limit', params.limit.toString())
+    const queryString = query.toString() ? `?${query.toString()}` : ''
+    return api<Report[]>(`/api/v1/reports/${queryString}`, { tenantId })
+  },
+
+  createReport: (tenantId: string, data: ReportCreate) =>
+    api<Report>('/api/v1/reports/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      tenantId,
+    }),
+
+  updateReport: (tenantId: string, reportId: string, data: ReportUpdate) =>
+    api<Report>(`/api/v1/reports/${reportId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      tenantId,
+    }),
+
+  getReportStats: (tenantId: string) =>
+    api<ReportStats>('/api/v1/reports/stats/summary', { tenantId }),
+}
+
+// Types
+export interface Agent {
+  id: string
+  condominium_id: string
+  name: string
+  extension: string
+  prompt: string
+  voice_id: string | null
+  language: string
+  is_active: boolean
+  settings: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentCreate {
+  condominium_id: string
+  name: string
+  extension: string
+  prompt?: string
+  voice_id?: string
+  language?: string
+}
+
+export interface Resident {
+  id: string
+  condominium_id: string
+  user_id: string | null
+  name: string
+  unit: string
+  phone: string | null
+  email: string | null
+  whatsapp: string | null
+  authorized_visitors: string[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ResidentCreate {
+  condominium_id: string
+  name: string
+  unit: string
+  phone?: string
+  email?: string
+  whatsapp?: string
+}
+
+export interface AccessLog {
+  id: string
+  condominium_id: string
+  event_type: string
+  access_point: string
+  direction: string | null
+  resident_id: string | null
+  visitor_id: string | null
+  visitor_name: string | null
+  vehicle_plate: string | null
+  authorization_method: string
+  authorized_by: string | null
+  camera_snapshot_url: string | null
+  confidence_score: number | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface Visitor {
+  id: string
+  condominium_id: string
+  resident_id: string | null
+  name: string
+  id_number: string | null
+  phone: string | null
+  vehicle_plate: string | null
+  reason: string | null
+  authorized_by: string | null
+  entry_time: string | null
+  exit_time: string | null
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CameraEvent {
+  id: string
+  condominium_id: string
+  camera_id: string
+  event_type: string
+  plate_number: string | null
+  plate_confidence: number | null
+  snapshot_url: string | null
+  processed: boolean
+  created_at: string
+}
+
+export interface PlateDetection {
+  plate: string
+  timestamp: string
+  camera_id: string
+}
+
+export interface Notification {
+  id: string
+  condominium_id: string
+  resident_id: string | null
+  channel: string
+  recipient: string
+  notification_type: string
+  title: string
+  message: string
+  status: string
+  sent_at: string | null
+  delivered_at: string | null
+  created_at: string
+}
+
+export interface Report {
+  id: string
+  condominium_id: string
+  resident_id: string | null
+  report_type: string  // 'maintenance', 'security', 'noise', 'cleaning', 'other'
+  title: string
+  description: string
+  location: string | null
+  urgency: string  // 'low', 'normal', 'high', 'urgent'
+  status: string  // 'pending', 'in_progress', 'resolved', 'closed'
+  source: string  // 'web', 'whatsapp', 'voice', 'email'
+  photo_urls: Record<string, unknown>
+  assigned_to: string | null
+  resolved_at: string | null
+  resolution_notes: string | null
+  extra_data: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface ReportCreate {
+  condominium_id: string
+  resident_id?: string
+  report_type: string
+  title: string
+  description: string
+  location?: string
+  urgency?: string
+  source?: string
+}
+
+export interface ReportUpdate {
+  status?: string
+  assigned_to?: string
+  resolution_notes?: string
+}
+
+export interface ReportStats {
+  total: number
+  by_status: Record<string, number>
+  by_type: Record<string, number>
+  by_urgency: Record<string, number>
+  pending: number
+  in_progress: number
+  resolved: number
+}
