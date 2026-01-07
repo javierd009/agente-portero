@@ -34,12 +34,21 @@ def get_engine() -> AsyncEngine:
     global _engine
 
     if _engine is None:
+        # SSL is required for Supabase connections
+        connect_args = {
+            "ssl": "require",
+            "server_settings": {
+                "application_name": "agente-portero-backend"
+            }
+        }
+
         _engine = create_async_engine(
             _get_database_url(),
             echo=os.getenv("DEBUG", "false").lower() == "true",
             pool_pre_ping=True,
             pool_size=5,
             max_overflow=10,
+            connect_args=connect_args,
         )
 
     return _engine
@@ -61,13 +70,36 @@ def get_session_maker() -> sessionmaker:
 
 async def init_db() -> None:
     """Initialize database - create tables if not exist"""
+    import asyncio
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     from domain.models import (
         Condominium, Agent, Resident, Visitor,
         Vehicle, AccessLog, CameraEvent, Notification
     )
 
-    async with get_engine().begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+    # Retry logic for database connection
+    max_retries = 5
+    retry_delay = 2  # seconds
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Attempting to connect to database (attempt {attempt}/{max_retries})...")
+            async with get_engine().begin() as conn:
+                await conn.run_sync(SQLModel.metadata.create_all)
+            logger.info("Database initialized successfully")
+            return
+        except Exception as e:
+            if attempt < max_retries:
+                logger.warning(f"Database connection failed (attempt {attempt}/{max_retries}): {e}")
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error(f"Failed to connect to database after {max_retries} attempts: {e}")
+                raise
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
