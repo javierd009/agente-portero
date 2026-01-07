@@ -20,25 +20,20 @@ from api.v1 import (
     visitors,
     reports,
 )
-from infrastructure.database import init_db
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    import os
     import logging
     logger = logging.getLogger(__name__)
 
-    try:
-        await init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.warning(f"Database initialization skipped: {e}")
-        if os.getenv("DEBUG", "false").lower() != "true":
-            raise  # Re-raise in production
+    # Las tablas ya existen en Supabase (creadas en FASE 1)
+    # No necesitamos create_all(), la conexión será lazy
+    logger.info("Backend API started successfully")
 
     yield
+
     # Shutdown
+    logger.info("Backend API shutting down")
 
 app = FastAPI(
     title="Agente Portero API",
