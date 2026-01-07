@@ -59,24 +59,29 @@ app = FastAPI(
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint - returns healthy even if Evolution API is not connected"""
+    evolution_status = "unknown"
+    evolution_error = None
+
     try:
-        # Verify Evolution API is reachable
+        # Try to verify Evolution API connection (optional)
         status = await evolution_client.get_instance_status()
-        return {
-            "status": "healthy",
-            "service": "whatsapp-service",
-            "evolution_api": status.get("state", "unknown")
-        }
+        evolution_status = status.get("state", "connected")
     except Exception as e:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "service": "whatsapp-service",
-                "error": str(e)
-            }
-        )
+        evolution_status = "disconnected"
+        evolution_error = str(e)
+        # Log but don't fail - instance might not exist yet
+        logger.warning("evolution_api_not_available", error=str(e))
+
+    # Service is healthy as long as FastAPI is running
+    # Evolution API connection is optional (instance can be created later)
+    return {
+        "status": "healthy",
+        "service": "whatsapp-service",
+        "evolution_api": evolution_status,
+        "evolution_instance": settings.EVOLUTION_INSTANCE,
+        "evolution_error": evolution_error
+    }
 
 
 @app.post("/webhook")
