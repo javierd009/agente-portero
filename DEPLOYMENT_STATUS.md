@@ -71,32 +71,43 @@ DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/post
 ## 🟡 FASE 2: Portainer/Contabo Services - EN PROGRESO
 
 ### Estado Actual
-**Instrucciones proporcionadas**, esperando ejecución por parte del usuario.
+**Listo para deployment.** Repositorio GitHub configurado, DNS apuntando al servidor, guías y scripts preparados.
+
+**Servidor:** 147.93.147.12
+**Dominios configurados:**
+- api-portero.integratec-ia.com → 147.93.147.12
+- whatsapp-portero.integratec-ia.com → 147.93.147.12
+- voice-portero.integratec-ia.com → 147.93.147.12
+- evolution-portero.integratec-ia.com → 147.93.147.12
+
+### Tareas Completadas
+
+#### 2.1 Preparación Inicial
+- [x] Repositorio GitHub creado: https://github.com/javierd009/agente-portero
+- [x] Variables de entorno preparadas en `portainer.env`
+- [x] Docker Compose adaptado a infraestructura Portainer con Traefik
+- [x] Guía de deployment completa creada
+- [x] Scripts de verificación creados
+- [x] DNS configurados apuntando a servidor
+
+#### 2.2 Archivos de Deployment
+- [x] `docker-compose.portainer-build.yml` - Para primer deploy (build local)
+- [x] `docker-compose.portainer.yml` - Para deploys futuros (pull desde ghcr.io)
+- [x] `portainer.env` - Variables listas para copiar/pegar
+- [x] `GUIA_DEPLOYMENT_PORTAINER.md` - Pasos detallados
+- [x] `scripts/verify-deployment.sh` - Verificación automática
+- [x] `scripts/configure-evolution.sh` - Configuración WhatsApp
 
 ### Tareas Pendientes
 
-#### 2.1 Preparar Servidor Contabo
-- [ ] SSH a servidor Contabo
-- [ ] Crear directorio `/opt/agente-portero`
-- [ ] Subir código vía Git o SCP
-- [ ] Verificar archivos presentes
-
-#### 2.2 Configurar Variables de Entorno
-- [ ] Crear archivo `.env.production` en servidor
-- [ ] Copiar credenciales de Supabase desde FASE 1
-- [ ] Configurar OPENAI_API_KEY (OpenRouter)
-- [ ] Configurar Evolution API settings
-- [ ] Configurar Redis password
-- [ ] Generar JWT_SECRET con `openssl rand -hex 32`
-- [ ] Configurar PUBLIC_BACKEND_URL con IP pública
-
 #### 2.3 Deploy Stack via Portainer
-- [ ] Login a Portainer (puerto 9000)
+- [ ] Login a Portainer (http://147.93.147.12:9000)
 - [ ] Crear nuevo Stack "agente-portero"
-- [ ] Subir `docker-compose.production.yml`
-- [ ] Cargar variables desde `.env.production`
+- [ ] Repository: https://github.com/javierd009/agente-portero
+- [ ] Compose path: `docker-compose.portainer-build.yml`
+- [ ] Copiar variables desde `portainer.env`
 - [ ] Deploy stack
-- [ ] Esperar 2-3 minutos para build
+- [ ] Esperar 5-10 minutos para build
 
 #### 2.4 Verificar Servicios Running
 - [ ] Verificar 6 contenedores corriendo:
