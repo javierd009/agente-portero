@@ -104,7 +104,6 @@ services:
     environment:
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       - DATABASE_ENABLED=false
-      - DATABASE_PROVIDER=none
       - QRCODE_COLOR=#198754
     volumes:
       - evolution_instances:/evolution/instances
