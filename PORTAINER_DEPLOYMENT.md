@@ -245,6 +245,63 @@ Una vez desplegado, tendrás acceso a:
 
 ## Troubleshooting
 
+### Problema: Backend error "Network is unreachable" al conectar a Supabase
+
+**Síntomas:** Backend falla en startup con `OSError: [Errno 101] Network is unreachable`
+
+**Causas posibles:**
+1. Los contenedores no tienen acceso a Internet
+2. Falta configuración de DNS en Docker
+3. Firewall bloqueando conexiones salientes
+
+**Soluciones:**
+
+1. **Verificar que la red tiene acceso a Internet:**
+   ```bash
+   # Entrar al contenedor backend
+   docker exec -it <backend-container-id> sh
+
+   # Probar conectividad
+   ping -c 3 8.8.8.8
+   ping -c 3 google.com
+
+   # Probar conexión a Supabase
+   nc -zv db.datrxcbcvlfhjivncddr.supabase.co 6543
+   ```
+
+2. **Verificar DNS en los contenedores:**
+   ```bash
+   # En el servidor, verificar DNS de Docker
+   cat /etc/docker/daemon.json
+
+   # Si no existe o falta DNS, crear/editar:
+   {
+     "dns": ["8.8.8.8", "8.8.4.4"]
+   }
+
+   # Reiniciar Docker
+   systemctl restart docker
+   ```
+
+3. **Verificar que Supabase permite la IP del servidor:**
+   - Ve a Supabase > Settings > Database
+   - Verifica que no haya IP blocking
+   - Confirma que "Allow connections from all IPs" está habilitado
+
+4. **Verificar variables de entorno:**
+   ```bash
+   # En Portainer, verifica que DATABASE_URL está correcta
+   # Debe usar puerto 6543 (Transaction Pooler), no 5432
+   DATABASE_URL=postgresql://postgres:PASSWORD@db.PROJECT.supabase.co:6543/postgres
+   ```
+
+### Problema: Redis connection refused
+
+**Solución:**
+- Verifica que el servicio `evolution_redis` está corriendo
+- Confirma que `REDIS_PASSWORD` está configurado en variables de entorno
+- La URL debe ser: `redis://:PASSWORD@evolution_redis:6379`
+
 ### Problema: Servicios no inician
 
 1. Verifica los logs en Portainer:

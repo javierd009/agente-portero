@@ -15,7 +15,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
 
       # Redis
-      - REDIS_URL=redis://evolution_redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@evolution_redis:6379
 
       # Environment
       - ENVIRONMENT=production
@@ -49,7 +49,7 @@ services:
       - BACKEND_API_URL=http://backend:8000
 
       # Redis
-      - REDIS_URL=redis://evolution_redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@evolution_redis:6379
 
       # Environment
       - DEBUG=false
@@ -121,6 +121,19 @@ services:
         - "traefik.http.routers.portero-evolution.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.portero-evolution.loadbalancer.server.port=8080"
 
+  # Redis (Cache & Sessions)
+  evolution_redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - IntegratecNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
 networks:
   IntegratecNet:
     external: true
@@ -128,3 +141,4 @@ networks:
 volumes:
   evolution_instances:
   evolution_store:
+  redis_data:
