@@ -44,6 +44,7 @@ services:
 
       # OpenAI
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_WHISPER_KEY=${OPENAI_WHISPER_KEY}
 
       # Backend
       - BACKEND_API_URL=http://backend:8000
@@ -105,18 +106,8 @@ services:
       # Authentication
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
 
-      # Database (Supabase PostgreSQL)
-      - DATABASE_ENABLED=true
-      - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=${DATABASE_URL}
-      - DATABASE_CONNECTION_CLIENT_NAME=evolution_api
-
-      # Data persistence (minimal config for WhatsApp sessions)
-      - DATABASE_SAVE_DATA_INSTANCE=true
-      - DATABASE_SAVE_DATA_NEW_MESSAGE=false
-      - DATABASE_SAVE_MESSAGE_UPDATE=false
-      - DATABASE_SAVE_DATA_CONTACTS=false
-      - DATABASE_SAVE_DATA_CHATS=false
+      # Database (deshabilitado - usa archivos locales)
+      - DATABASE_ENABLED=false
 
       # UI
       - QRCODE_COLOR=#198754
