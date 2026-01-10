@@ -17,6 +17,7 @@ from nlp_parser import (
     UnknownIntent
 )
 from security_agent import get_agent_response
+from audio_transcriber import transcribe_audio
 from config import settings
 
 logger = structlog.get_logger()
@@ -54,6 +55,8 @@ class WebhookHandler:
 
             # Get text from different message types
             text = None
+            is_audio = False
+
             if "conversation" in message_content:
                 text = message_content["conversation"]
             elif "extendedTextMessage" in message_content:
@@ -61,6 +64,31 @@ class WebhookHandler:
             elif "buttonsResponseMessage" in message_content:
                 # User clicked a button
                 text = message_content["buttonsResponseMessage"].get("selectedDisplayText")
+            elif "audioMessage" in message_content:
+                # Audio message - need to transcribe
+                is_audio = True
+                logger.info("audio_message_received", phone=phone, message_id=message_id)
+
+                # Download and transcribe audio
+                audio_bytes = await evolution_client.download_media(message_data)
+                if audio_bytes:
+                    text = await transcribe_audio(audio_bytes)
+                    if text:
+                        logger.info("audio_transcribed", phone=phone, text_preview=text[:50])
+                    else:
+                        await evolution_client.send_text(
+                            phone,
+                            "No pude entender el audio. ¿Podrías escribirlo o repetirlo?\n\n"
+                            "I couldn't understand the audio. Could you type it or try again?"
+                        )
+                        return
+                else:
+                    await evolution_client.send_text(
+                        phone,
+                        "No pude descargar el audio. Intenta de nuevo.\n\n"
+                        "Couldn't download the audio. Please try again."
+                    )
+                    return
 
             if not text:
                 logger.debug("message_no_text", phone=phone)

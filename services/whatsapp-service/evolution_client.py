@@ -201,6 +201,62 @@ class EvolutionAPIClient:
             logger.error("instance_status_failed", error=str(e))
             raise
 
+    async def download_media(self, message_data: Dict[str, Any]) -> Optional[bytes]:
+        """
+        Download media (audio, image, etc.) from a message
+
+        Args:
+            message_data: The message data containing media info
+
+        Returns:
+            Media bytes or None if download fails
+        """
+        try:
+            # Evolution API provides base64 encoded media in the message
+            message_content = message_data.get("message", {})
+
+            # Check for audio message
+            audio_msg = message_content.get("audioMessage", {})
+            if audio_msg:
+                # Get media URL from Evolution API
+                media_key = message_data.get("key", {}).get("id")
+                if not media_key:
+                    return None
+
+                # Use Evolution API to get media
+                url = f"{self.base_url}/chat/getBase64FromMediaMessage/{self.instance}"
+                payload = {
+                    "message": {
+                        "key": message_data.get("key", {})
+                    },
+                    "convertToMp4": False
+                }
+
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        url,
+                        headers=self.headers,
+                        json=payload,
+                        timeout=30.0
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+
+                    # Decode base64
+                    import base64
+                    base64_data = result.get("base64", "")
+                    if base64_data:
+                        # Remove data URL prefix if present
+                        if "," in base64_data:
+                            base64_data = base64_data.split(",")[1]
+                        return base64.b64decode(base64_data)
+
+            return None
+
+        except Exception as e:
+            logger.error("media_download_failed", error=str(e))
+            return None
+
 
 # Singleton instance
 evolution_client = EvolutionAPIClient()
