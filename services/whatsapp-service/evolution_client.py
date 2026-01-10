@@ -211,50 +211,68 @@ class EvolutionAPIClient:
         Returns:
             Media bytes or None if download fails
         """
+        import base64
+
         try:
-            # Evolution API provides base64 encoded media in the message
             message_content = message_data.get("message", {})
+            message_key = message_data.get("key", {})
+
+            logger.info("download_media_attempt", key=message_key, has_audio="audioMessage" in message_content)
 
             # Check for audio message
-            audio_msg = message_content.get("audioMessage", {})
-            if audio_msg:
-                # Get media URL from Evolution API
-                media_key = message_data.get("key", {}).get("id")
-                if not media_key:
+            if "audioMessage" not in message_content:
+                logger.warning("no_audio_in_message")
+                return None
+
+            # Use Evolution API to get media
+            url = f"{self.base_url}/chat/getBase64FromMediaMessage/{self.instance}"
+
+            # Evolution API expects the full message structure
+            payload = {
+                "message": {
+                    "key": {
+                        "remoteJid": message_key.get("remoteJid"),
+                        "fromMe": message_key.get("fromMe", False),
+                        "id": message_key.get("id")
+                    },
+                    "message": message_content
+                },
+                "convertToMp4": False
+            }
+
+            logger.info("evolution_media_request", url=url)
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    headers=self.headers,
+                    json=payload,
+                    timeout=30.0
+                )
+
+                if response.status_code != 200:
+                    logger.error("evolution_media_error", status=response.status_code, body=response.text[:200])
                     return None
 
-                # Use Evolution API to get media
-                url = f"{self.base_url}/chat/getBase64FromMediaMessage/{self.instance}"
-                payload = {
-                    "message": {
-                        "key": message_data.get("key", {})
-                    },
-                    "convertToMp4": False
-                }
+                result = response.json()
+                logger.info("evolution_media_response", has_base64="base64" in result)
 
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        url,
-                        headers=self.headers,
-                        json=payload,
-                        timeout=30.0
-                    )
-                    response.raise_for_status()
-                    result = response.json()
+                # Decode base64
+                base64_data = result.get("base64", "")
+                if base64_data:
+                    # Remove data URL prefix if present (e.g., "data:audio/ogg;base64,...")
+                    if "," in base64_data:
+                        base64_data = base64_data.split(",")[1]
 
-                    # Decode base64
-                    import base64
-                    base64_data = result.get("base64", "")
-                    if base64_data:
-                        # Remove data URL prefix if present
-                        if "," in base64_data:
-                            base64_data = base64_data.split(",")[1]
-                        return base64.b64decode(base64_data)
+                    audio_bytes = base64.b64decode(base64_data)
+                    logger.info("audio_downloaded", size_bytes=len(audio_bytes))
+                    return audio_bytes
 
+            logger.warning("no_base64_in_response")
             return None
 
         except Exception as e:
-            logger.error("media_download_failed", error=str(e))
+            logger.error("media_download_failed", error=str(e), error_type=type(e).__name__)
             return None
 
 
