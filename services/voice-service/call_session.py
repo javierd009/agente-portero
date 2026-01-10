@@ -140,6 +140,12 @@ HERRAMIENTAS DISPONIBLES:
 
         try:
             # Connect to OpenAI Realtime
+            logger.info(f"Connecting to OpenAI Realtime: {self.openai_ws_url}")
+
+            if not self.settings.openai_api_key:
+                logger.error("OpenAI API key is not configured!")
+                raise ValueError("OPENAI_API_KEY is not set")
+
             headers = {
                 "Authorization": f"Bearer {self.settings.openai_api_key}",
                 "OpenAI-Beta": "realtime=v1"
@@ -154,14 +160,23 @@ HERRAMIENTAS DISPONIBLES:
             # Configure the session
             await self._configure_session()
 
-            # Start listening for OpenAI events
-            asyncio.create_task(self._listen_openai())
+            # Start listening for OpenAI events and audio streaming
+            listen_task = asyncio.create_task(self._listen_openai())
+            stream_task = asyncio.create_task(self._stream_audio())
 
-            # Start audio streaming from Asterisk
-            asyncio.create_task(self._stream_audio())
+            # Wait for the listening task to complete (it runs until connection closes)
+            # This keeps the session alive until the call ends
+            await listen_task
+
+            # Cancel streaming task when listening ends
+            stream_task.cancel()
+            try:
+                await stream_task
+            except asyncio.CancelledError:
+                pass
 
         except Exception as e:
-            logger.error(f"Failed to start OpenAI session: {e}")
+            logger.error(f"Failed to start OpenAI session: {e}", exc_info=True)
             await self.stop()
 
     async def _configure_session(self):
