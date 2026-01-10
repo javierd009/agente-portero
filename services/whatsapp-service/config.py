@@ -23,9 +23,12 @@ class Settings(BaseSettings):
     BACKEND_API_URL: str = "http://localhost:8000"
     BACKEND_API_KEY: Optional[str] = None
 
-    # OpenAI (for NLP intent parsing)
-    OPENAI_API_KEY: str
+    # OpenAI (for NLP intent parsing via OpenRouter)
+    OPENAI_API_KEY: str  # OpenRouter key for chat/NLP
     OPENAI_MODEL: str = "gpt-4-turbo-preview"  # or "gpt-4o"
+
+    # OpenAI Direct (for Whisper audio transcription)
+    OPENAI_WHISPER_KEY: Optional[str] = None  # Direct OpenAI key for Whisper STT
 
     # Redis (session management)
     REDIS_URL: str = "redis://localhost:6379/0"

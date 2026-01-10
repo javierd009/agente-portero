@@ -12,9 +12,11 @@ from config import settings
 
 logger = structlog.get_logger()
 
-# OpenAI client (via OpenRouter or direct)
+# OpenAI client for Whisper (requires direct OpenAI key, not OpenRouter)
+# Uses OPENAI_WHISPER_KEY if available, falls back to OPENAI_API_KEY
+whisper_api_key = settings.OPENAI_WHISPER_KEY or settings.OPENAI_API_KEY
 client = AsyncOpenAI(
-    api_key=settings.OPENAI_API_KEY,
+    api_key=whisper_api_key,
     base_url="https://api.openai.com/v1"  # Direct OpenAI for Whisper
 )
 
