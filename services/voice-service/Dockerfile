@@ -10,5 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY . .
 
+# Expose AudioSocket bridge port
+EXPOSE 8089
+
 # Run the service
 CMD ["python", "main.py"]

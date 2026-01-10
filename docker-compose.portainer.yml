@@ -72,10 +72,14 @@ services:
     image: ghcr.io/javierd009/agente-portero-voice:latest
     environment:
       # Asterisk ARI
-      - ASTERISK_ARI_URL=${ASTERISK_ARI_URL}
-      - ASTERISK_ARI_USER=${ASTERISK_ARI_USER}
-      - ASTERISK_ARI_PASSWORD=${ASTERISK_ARI_PASSWORD}
+      - ASTERISK_ARI_URL=${ASTERISK_ARI_URL:-http://integrateccr.ddns.net:8880/ari}
+      - ASTERISK_ARI_USER=${ASTERISK_ARI_USER:-asterisk}
+      - ASTERISK_ARI_PASSWORD=${ASTERISK_ARI_PASSWORD:-asterisk123}
       - ASTERISK_ARI_APP=agente-portero
+
+      # Audio Bridge
+      - AUDIO_BRIDGE_HOST=0.0.0.0
+      - AUDIO_BRIDGE_PORT=8089
 
       # OpenAI Realtime
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -86,6 +90,8 @@ services:
 
       # Environment
       - DEBUG=false
+    ports:
+      - "8089:8089"  # AudioSocket bridge port for Asterisk
     networks:
       - IntegratecNet
     deploy:

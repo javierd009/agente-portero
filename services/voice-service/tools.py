@@ -14,41 +14,18 @@ logger = logging.getLogger(__name__)
 AGENT_TOOLS = [
     {
         "type": "function",
-        "name": "check_visitor",
-        "description": "Verificar si un visitante está pre-autorizado para entrar. Busca por nombre, placa de vehículo o número de identificación.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Nombre del visitante"
-                },
-                "plate": {
-                    "type": "string",
-                    "description": "Placa del vehículo"
-                },
-                "id_number": {
-                    "type": "string",
-                    "description": "Número de identificación (INE, pasaporte, etc.)"
-                }
-            },
-            "required": []
-        }
-    },
-    {
-        "type": "function",
         "name": "find_resident",
-        "description": "Buscar un residente por nombre o número de unidad/departamento",
+        "description": "Buscar un residente por nombre o número de casa/departamento. Usa esto cuando el visitante dice a quién visita.",
         "parameters": {
             "type": "object",
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Nombre del residente"
+                    "description": "Nombre del residente (ej: 'Carlos', 'María López')"
                 },
                 "unit": {
                     "type": "string",
-                    "description": "Número de unidad o departamento (ej: A-101, 205)"
+                    "description": "Número de casa o departamento (ej: '16', 'A-101', '5B')"
                 }
             },
             "required": []
@@ -56,22 +33,49 @@ AGENT_TOOLS = [
     },
     {
         "type": "function",
-        "name": "notify_resident",
-        "description": "Notificar al residente sobre la llegada de un visitante via WhatsApp",
+        "name": "check_preauthorized_visitor",
+        "description": "Verificar si hay una autorización previa para este visitante. El residente pudo haber reportado la visita por WhatsApp antes.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "visitor_name": {
+                    "type": "string",
+                    "description": "Nombre del visitante"
+                },
+                "resident_id": {
+                    "type": "string",
+                    "description": "ID del residente (si ya se encontró)"
+                },
+                "unit": {
+                    "type": "string",
+                    "description": "Número de casa/depto del destino"
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "type": "function",
+        "name": "request_authorization",
+        "description": "Enviar solicitud de autorización al residente por WhatsApp. Usa esto cuando no hay autorización previa y necesitas confirmar con el residente.",
         "parameters": {
             "type": "object",
             "properties": {
                 "resident_id": {
                     "type": "string",
-                    "description": "ID del residente"
+                    "description": "ID del residente a contactar"
                 },
                 "visitor_name": {
                     "type": "string",
                     "description": "Nombre del visitante"
                 },
-                "visitor_plate": {
+                "visitor_company": {
                     "type": "string",
-                    "description": "Placa del vehículo del visitante (opcional)"
+                    "description": "Empresa del visitante si aplica (Uber, Rappi, DHL, etc.)"
+                },
+                "visit_reason": {
+                    "type": "string",
+                    "description": "Motivo de la visita"
                 }
             },
             "required": ["resident_id", "visitor_name"]
@@ -80,21 +84,22 @@ AGENT_TOOLS = [
     {
         "type": "function",
         "name": "open_gate",
-        "description": "Abrir la puerta de acceso principal",
+        "description": "Abrir la puerta/portón de acceso. Solo usar después de confirmar autorización.",
         "parameters": {
             "type": "object",
             "properties": {
-                "gate_id": {
-                    "type": "string",
-                    "description": "ID de la puerta a abrir (default: main_gate)"
-                },
                 "visitor_name": {
                     "type": "string",
                     "description": "Nombre del visitante para registro"
                 },
                 "resident_id": {
                     "type": "string",
-                    "description": "ID del residente que recibe la visita"
+                    "description": "ID del residente que autoriza"
+                },
+                "authorization_type": {
+                    "type": "string",
+                    "description": "Tipo de autorización: 'preauthorized', 'realtime', 'guard_override'",
+                    "enum": ["preauthorized", "realtime", "guard_override"]
                 }
             },
             "required": ["visitor_name"]
@@ -102,29 +107,14 @@ AGENT_TOOLS = [
     },
     {
         "type": "function",
-        "name": "get_recent_plates",
-        "description": "Obtener las placas de vehículos detectadas recientemente por las cámaras",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "minutes": {
-                    "type": "integer",
-                    "description": "Minutos hacia atrás para buscar (default: 5)"
-                }
-            },
-            "required": []
-        }
-    },
-    {
-        "type": "function",
         "name": "transfer_to_guard",
-        "description": "Transferir la llamada a un guardia humano",
+        "description": "Transferir la llamada a un guardia de seguridad humano. Usa esto en emergencias, situaciones sospechosas, o cuando el visitante lo solicita.",
         "parameters": {
             "type": "object",
             "properties": {
                 "reason": {
                     "type": "string",
-                    "description": "Razón de la transferencia"
+                    "description": "Razón de la transferencia para informar al guardia"
                 }
             },
             "required": ["reason"]
@@ -132,33 +122,34 @@ AGENT_TOOLS = [
     },
     {
         "type": "function",
-        "name": "register_visitor",
-        "description": "Registrar un nuevo visitante en el sistema",
+        "name": "log_visit",
+        "description": "Registrar la visita en la bitácora del condominio.",
         "parameters": {
             "type": "object",
             "properties": {
-                "name": {
+                "visitor_name": {
                     "type": "string",
                     "description": "Nombre del visitante"
                 },
                 "resident_id": {
                     "type": "string",
-                    "description": "ID del residente que recibe la visita"
+                    "description": "ID del residente visitado"
                 },
-                "reason": {
+                "unit": {
                     "type": "string",
-                    "description": "Motivo de la visita"
+                    "description": "Número de casa/depto"
                 },
-                "vehicle_plate": {
+                "status": {
                     "type": "string",
-                    "description": "Placa del vehículo (opcional)"
+                    "description": "Estado de la visita",
+                    "enum": ["authorized", "denied", "pending", "transferred_to_guard"]
                 },
-                "id_number": {
+                "notes": {
                     "type": "string",
-                    "description": "Número de identificación (opcional)"
+                    "description": "Notas adicionales"
                 }
             },
-            "required": ["name", "resident_id", "reason"]
+            "required": ["visitor_name", "status"]
         }
     }
 ]
@@ -169,137 +160,182 @@ async def execute_tool(
     args: Dict[str, Any],
     settings: Settings,
     tenant_id: Optional[str],
-    channel_id: str
+    channel_id: str,
+    ari_handler: Optional[Any] = None,
+    guard_extension: str = "1002"
 ) -> Dict[str, Any]:
     """Execute a tool and return the result"""
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         headers = {"X-Tenant-ID": tenant_id} if tenant_id else {}
         base_url = settings.backend_api_url
 
-        if name == "check_visitor":
-            return await check_visitor(client, base_url, headers, args)
+        if name == "find_resident":
+            return await find_resident(client, base_url, headers, args, tenant_id)
 
-        elif name == "find_resident":
-            return await find_resident(client, base_url, headers, args)
+        elif name == "check_preauthorized_visitor":
+            return await check_preauthorized_visitor(client, base_url, headers, args, tenant_id)
 
-        elif name == "notify_resident":
-            return await notify_resident(client, base_url, headers, args)
+        elif name == "request_authorization":
+            return await request_authorization(client, base_url, headers, args, tenant_id)
 
         elif name == "open_gate":
             return await open_gate(client, base_url, headers, args, tenant_id)
 
-        elif name == "get_recent_plates":
-            return await get_recent_plates(client, base_url, headers, args)
-
         elif name == "transfer_to_guard":
-            return await transfer_to_guard(args, channel_id)
+            return await transfer_to_guard(args, channel_id, ari_handler, guard_extension)
 
-        elif name == "register_visitor":
-            return await register_visitor(client, base_url, headers, args)
+        elif name == "log_visit":
+            return await log_visit(client, base_url, headers, args, tenant_id)
 
         else:
             return {"error": f"Unknown tool: {name}"}
-
-
-async def check_visitor(
-    client: httpx.AsyncClient,
-    base_url: str,
-    headers: dict,
-    args: dict
-) -> dict:
-    """Check if visitor is pre-authorized"""
-    params = {}
-    if args.get("name"):
-        params["name"] = args["name"]
-    if args.get("plate"):
-        params["plate"] = args["plate"]
-    if args.get("id_number"):
-        params["id_number"] = args["id_number"]
-
-    if not params:
-        return {"authorized": False, "message": "No se proporcionó información del visitante"}
-
-    try:
-        resp = await client.get(
-            f"{base_url}/api/v1/access/visitors/check",
-            params=params,
-            headers=headers
-        )
-        if resp.status_code == 200:
-            return resp.json()
-        else:
-            return {"authorized": False, "error": resp.text}
-    except Exception as e:
-        logger.error(f"Error checking visitor: {e}")
-        return {"authorized": False, "error": str(e)}
 
 
 async def find_resident(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict,
-    args: dict
+    args: dict,
+    tenant_id: Optional[str]
 ) -> dict:
-    """Find resident by name or unit"""
-    params = {}
-    if args.get("unit"):
-        params["unit"] = args["unit"]
-
+    """Find resident by name or unit number"""
     try:
+        params = {"tenant_id": tenant_id} if tenant_id else {}
+
+        if args.get("unit"):
+            params["unit"] = args["unit"]
+        if args.get("name"):
+            params["name"] = args["name"]
+
         resp = await client.get(
-            f"{base_url}/api/v1/access/residents",
+            f"{base_url}/api/v1/residents/search",
             params=params,
             headers=headers
         )
-        if resp.status_code == 200:
-            residents = resp.json()
 
-            # Filter by name if provided
-            if args.get("name"):
-                name_lower = args["name"].lower()
-                residents = [
-                    r for r in residents
-                    if name_lower in r.get("name", "").lower()
-                ]
+        if resp.status_code == 200:
+            data = resp.json()
+            residents = data.get("residents", [])
 
             if residents:
+                # Return simplified info (don't expose phone numbers, etc.)
+                safe_residents = []
+                for r in residents[:5]:
+                    safe_residents.append({
+                        "id": r.get("id"),
+                        "name": r.get("name"),
+                        "unit": r.get("unit"),
+                        "building": r.get("building")
+                    })
+
                 return {
                     "found": True,
-                    "residents": residents[:5]  # Limit to 5 results
+                    "count": len(safe_residents),
+                    "residents": safe_residents,
+                    "message": f"Se encontraron {len(safe_residents)} residente(s)"
                 }
             else:
-                return {"found": False, "message": "No se encontró el residente"}
+                return {
+                    "found": False,
+                    "message": "No se encontró ningún residente con esos datos"
+                }
         else:
-            return {"found": False, "error": resp.text}
+            logger.warning(f"Backend returned {resp.status_code}: {resp.text}")
+            return {"found": False, "message": "Error al buscar residente"}
+
     except Exception as e:
         logger.error(f"Error finding resident: {e}")
         return {"found": False, "error": str(e)}
 
 
-async def notify_resident(
+async def check_preauthorized_visitor(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict,
-    args: dict
+    args: dict,
+    tenant_id: Optional[str]
 ) -> dict:
-    """Notify resident about visitor arrival"""
+    """Check if there's a pre-authorization for this visitor"""
     try:
-        resp = await client.post(
-            f"{base_url}/api/v1/notifications/visitor-arrival",
-            params={
-                "resident_id": args["resident_id"],
-                "visitor_name": args["visitor_name"],
-                "visitor_plate": args.get("visitor_plate")
-            },
+        params = {"tenant_id": tenant_id} if tenant_id else {}
+
+        if args.get("visitor_name"):
+            params["visitor_name"] = args["visitor_name"]
+        if args.get("resident_id"):
+            params["resident_id"] = args["resident_id"]
+        if args.get("unit"):
+            params["unit"] = args["unit"]
+
+        resp = await client.get(
+            f"{base_url}/api/v1/authorizations/check",
+            params=params,
             headers=headers
         )
+
         if resp.status_code == 200:
-            return resp.json()
+            data = resp.json()
+            if data.get("authorized"):
+                return {
+                    "authorized": True,
+                    "authorization_id": data.get("id"),
+                    "resident_name": data.get("resident_name"),
+                    "expires_at": data.get("expires_at"),
+                    "message": f"Visitante pre-autorizado por {data.get('resident_name')}"
+                }
+            else:
+                return {
+                    "authorized": False,
+                    "message": "No hay autorización previa para este visitante"
+                }
         else:
-            return {"sent": False, "error": resp.text}
+            return {"authorized": False, "message": "No se encontró autorización previa"}
+
     except Exception as e:
-        logger.error(f"Error notifying resident: {e}")
+        logger.error(f"Error checking pre-authorization: {e}")
+        return {"authorized": False, "error": str(e)}
+
+
+async def request_authorization(
+    client: httpx.AsyncClient,
+    base_url: str,
+    headers: dict,
+    args: dict,
+    tenant_id: Optional[str]
+) -> dict:
+    """Send authorization request to resident via WhatsApp"""
+    try:
+        payload = {
+            "tenant_id": tenant_id,
+            "resident_id": args["resident_id"],
+            "visitor_name": args["visitor_name"],
+            "visitor_company": args.get("visitor_company"),
+            "visit_reason": args.get("visit_reason"),
+            "request_type": "voice_call"
+        }
+
+        resp = await client.post(
+            f"{base_url}/api/v1/authorizations/request",
+            json=payload,
+            headers=headers
+        )
+
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            return {
+                "sent": True,
+                "request_id": data.get("id"),
+                "message": "Solicitud de autorización enviada al residente por WhatsApp",
+                "waiting_response": True
+            }
+        else:
+            return {
+                "sent": False,
+                "message": "No se pudo enviar la solicitud al residente"
+            }
+
+    except Exception as e:
+        logger.error(f"Error requesting authorization: {e}")
         return {"sent": False, "error": str(e)}
 
 
@@ -311,109 +347,108 @@ async def open_gate(
     tenant_id: Optional[str]
 ) -> dict:
     """Open the access gate"""
-    # First, log the access
     try:
-        access_log = {
-            "condominium_id": tenant_id,
-            "event_type": "visitor_entry",
-            "access_point": args.get("gate_id", "main_gate"),
+        payload = {
+            "tenant_id": tenant_id,
             "visitor_name": args["visitor_name"],
-            "authorization_method": "ai_agent",
-            "resident_id": args.get("resident_id")
+            "resident_id": args.get("resident_id"),
+            "authorization_type": args.get("authorization_type", "realtime"),
+            "source": "voice_agent"
         }
 
         resp = await client.post(
-            f"{base_url}/api/v1/access/logs",
-            json=access_log,
+            f"{base_url}/api/v1/gates/open",
+            json=payload,
             headers=headers
         )
 
-        # TODO: Send command to Hikvision gate via backend
-        # For now, we'll simulate success
-
-        return {
-            "success": True,
-            "message": "Puerta abierta exitosamente",
-            "access_log_id": resp.json().get("id") if resp.status_code == 201 else None
-        }
+        if resp.status_code in (200, 201):
+            return {
+                "success": True,
+                "message": "Puerta abierta exitosamente"
+            }
+        else:
+            logger.warning(f"Gate open failed: {resp.status_code} - {resp.text}")
+            return {
+                "success": False,
+                "message": "Error al abrir la puerta, contactando a guardia"
+            }
 
     except Exception as e:
         logger.error(f"Error opening gate: {e}")
         return {"success": False, "error": str(e)}
 
 
-async def get_recent_plates(
-    client: httpx.AsyncClient,
-    base_url: str,
-    headers: dict,
-    args: dict
+async def transfer_to_guard(
+    args: dict,
+    channel_id: str,
+    ari_handler: Optional[Any],
+    guard_extension: str
 ) -> dict:
-    """Get recently detected license plates"""
-    try:
-        params = {"minutes": args.get("minutes", 5)}
-        resp = await client.get(
-            f"{base_url}/api/v1/camera-events/plates/recent",
-            params=params,
-            headers=headers
-        )
-        if resp.status_code == 200:
-            return resp.json()
-        else:
-            return {"plates": [], "error": resp.text}
-    except Exception as e:
-        logger.error(f"Error getting recent plates: {e}")
-        return {"plates": [], "error": str(e)}
-
-
-async def transfer_to_guard(args: dict, channel_id: str) -> dict:
     """Transfer call to human guard"""
     reason = args.get("reason", "Solicitud de transferencia")
-    logger.info(f"Transferring call {channel_id} to guard. Reason: {reason}")
+    logger.info(f"Transferring call {channel_id} to guard ({guard_extension}). Reason: {reason}")
 
-    # TODO: Implement actual call transfer via ARI
-    # This would involve:
-    # 1. Create a new channel to the guard extension
-    # 2. Bridge the visitor channel with the guard channel
-    # 3. Leave the Stasis app
+    try:
+        if ari_handler:
+            # Use ARI to transfer the call
+            success = await ari_handler.transfer_to_extension(channel_id, guard_extension)
+            if success:
+                return {
+                    "transferred": True,
+                    "extension": guard_extension,
+                    "message": f"Llamada transferida a guardia de seguridad"
+                }
+            else:
+                return {
+                    "transferred": False,
+                    "message": "No se pudo transferir, el guardia no está disponible"
+                }
+        else:
+            return {
+                "transferred": False,
+                "message": "Sistema de transferencia no disponible"
+            }
 
-    return {
-        "transferred": True,
-        "message": f"Transfiriendo a guardia de seguridad. Razón: {reason}"
-    }
+    except Exception as e:
+        logger.error(f"Error transferring to guard: {e}")
+        return {"transferred": False, "error": str(e)}
 
 
-async def register_visitor(
+async def log_visit(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict,
-    args: dict
+    args: dict,
+    tenant_id: Optional[str]
 ) -> dict:
-    """Register a new visitor"""
+    """Log the visit in the system"""
     try:
-        visitor_data = {
-            "name": args["name"],
-            "resident_id": args["resident_id"],
-            "reason": args["reason"],
-            "vehicle_plate": args.get("vehicle_plate"),
-            "id_number": args.get("id_number"),
-            "authorized_by": "ai_agent",
-            "status": "approved"
+        payload = {
+            "tenant_id": tenant_id,
+            "visitor_name": args["visitor_name"],
+            "resident_id": args.get("resident_id"),
+            "unit": args.get("unit"),
+            "status": args["status"],
+            "notes": args.get("notes"),
+            "source": "voice_agent"
         }
 
         resp = await client.post(
-            f"{base_url}/api/v1/access/visitors",
-            json=visitor_data,
+            f"{base_url}/api/v1/visits/log",
+            json=payload,
             headers=headers
         )
 
-        if resp.status_code == 201:
+        if resp.status_code in (200, 201):
             return {
-                "registered": True,
-                "visitor_id": resp.json().get("id")
+                "logged": True,
+                "visit_id": resp.json().get("id"),
+                "message": "Visita registrada en bitácora"
             }
         else:
-            return {"registered": False, "error": resp.text}
+            return {"logged": False, "message": "Error al registrar visita"}
 
     except Exception as e:
-        logger.error(f"Error registering visitor: {e}")
-        return {"registered": False, "error": str(e)}
+        logger.error(f"Error logging visit: {e}")
+        return {"logged": False, "error": str(e)}

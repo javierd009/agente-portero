@@ -6,12 +6,15 @@ import asyncio
 import json
 import logging
 import base64
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 import aiohttp
 import websockets
 
 from config import Settings
 from call_session import CallSession
+
+if TYPE_CHECKING:
+    from audio_bridge import AudioSocketBridge
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +22,9 @@ logger = logging.getLogger(__name__)
 class ARIHandler:
     """Handles Asterisk REST Interface (ARI) connection and events"""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, audio_bridge: Optional["AudioSocketBridge"] = None):
         self.settings = settings
+        self.audio_bridge = audio_bridge
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.http_session: Optional[aiohttp.ClientSession] = None
         self.active_sessions: Dict[str, CallSession] = {}
@@ -97,7 +101,19 @@ class ARIHandler:
         channel_id = channel.get("id")
         caller_id = channel.get("caller", {}).get("number", "unknown")
 
-        logger.info(f"New call from {caller_id} on channel {channel_id}")
+        # Extract tenant_id from Stasis args or channel variables
+        args = event.get("args", [])
+        tenant_id = args[0] if args else "default"
+
+        # Also check channel variables (set via Set(CHANNEL(tenant_id)=xxx))
+        channel_vars = channel.get("channelvars", {})
+        if "tenant_id" in channel_vars:
+            tenant_id = channel_vars["tenant_id"]
+
+        # Get guard extension for human-in-the-loop transfers
+        guard_extension = channel_vars.get("guard_extension", "1002")
+
+        logger.info(f"New call from {caller_id} on channel {channel_id} (tenant: {tenant_id})")
 
         # Answer the call
         await self._answer_channel(channel_id)
@@ -107,12 +123,40 @@ class ARIHandler:
             channel_id=channel_id,
             caller_id=caller_id,
             settings=self.settings,
-            ari_handler=self
+            ari_handler=self,
+            audio_bridge=self.audio_bridge,
+            tenant_id=tenant_id,
+            guard_extension=guard_extension
         )
         self.active_sessions[channel_id] = session
 
         # Start the AI session
         asyncio.create_task(session.start())
+
+        # If using AudioSocket, Asterisk will connect to our bridge
+        # If using External Media, start it now
+        if not self.audio_bridge:
+            await self._start_external_media_for_channel(channel_id)
+
+    async def transfer_to_extension(self, channel_id: str, extension: str):
+        """Transfer a call to another extension"""
+        url = f"{self.api_url}/channels/{channel_id}/redirect"
+        params = {"endpoint": f"PJSIP/{extension}"}
+        async with self.http_session.post(url, params=params) as resp:
+            if resp.status not in (200, 204):
+                logger.error(f"Failed to transfer call: {await resp.text()}")
+                return False
+            logger.info(f"Call {channel_id} transferred to {extension}")
+            return True
+
+    async def _start_external_media_for_channel(self, channel_id: str):
+        """Start external media for a channel (alternative to AudioSocket)"""
+        try:
+            media_uri = await self.start_external_media(channel_id)
+            if media_uri:
+                logger.info(f"External media started for {channel_id}: {media_uri}")
+        except Exception as e:
+            logger.error(f"Failed to start external media for {channel_id}: {e}")
 
     async def _handle_stasis_end(self, event: dict):
         """Handle call ended"""

@@ -5,11 +5,17 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Asterisk ARI
-    asterisk_ari_url: str = "http://localhost:8088/ari"
+    # Asterisk ARI (default to production)
+    asterisk_ari_url: str = "http://integrateccr.ddns.net:8880/ari"
     asterisk_ari_user: str = "asterisk"
-    asterisk_ari_password: str = "asterisk"
+    asterisk_ari_password: str = "asterisk123"
     asterisk_ari_app: str = "agente-portero"
+
+    # Audio Bridge (for External Media)
+    audio_bridge_host: str = "0.0.0.0"
+    audio_bridge_port: int = 8089
+    audio_sample_rate: int = 16000  # 16kHz for OpenAI
+    audio_chunk_ms: int = 20  # 20ms chunks
 
     # OpenAI
     openai_api_key: str = ""

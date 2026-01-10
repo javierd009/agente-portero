@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 import base64
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Callable
 import websockets
 import httpx
 
@@ -14,6 +14,7 @@ from tools import AGENT_TOOLS, execute_tool
 
 if TYPE_CHECKING:
     from ari_handler import ARIHandler
+    from audio_bridge import AudioSocketBridge
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +27,28 @@ class CallSession:
         channel_id: str,
         caller_id: str,
         settings: Settings,
-        ari_handler: "ARIHandler"
+        ari_handler: "ARIHandler",
+        audio_bridge: Optional["AudioSocketBridge"] = None,
+        tenant_id: str = "default",
+        guard_extension: str = "1002"
     ):
         self.channel_id = channel_id
         self.caller_id = caller_id
         self.settings = settings
         self.ari_handler = ari_handler
+        self.audio_bridge = audio_bridge
+        self.tenant_id = tenant_id
+        self.guard_extension = guard_extension
 
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.running = False
-        self.tenant_id: Optional[str] = None  # Will be determined from extension
         self.conversation_id: Optional[str] = None
+        self.audio_buffer: asyncio.Queue = asyncio.Queue(maxsize=100)
+
+        # Visitor info collected during conversation
+        self.visitor_name: Optional[str] = None
+        self.destination_unit: Optional[str] = None
+        self.destination_resident: Optional[str] = None
 
     @property
     def openai_ws_url(self) -> str:
@@ -44,32 +56,82 @@ class CallSession:
 
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the AI agent"""
-        return """Eres un agente de seguridad virtual para un condominio residencial en México.
-Tu trabajo es atender a los visitantes que llegan a la puerta principal.
+        return f"""Eres un agente de seguridad virtual profesional para el condominio "{self.tenant_id}".
+Tu trabajo es atender a los visitantes que llegan a la puerta principal de manera eficiente y segura.
 
-FLUJO DE CONVERSACIÓN:
-1. Saluda amablemente e identifícate como el sistema de seguridad del condominio
-2. Pregunta el nombre del visitante
-3. Pregunta a quién visita (nombre del residente o número de departamento)
-4. Pregunta el motivo de la visita
-5. Verifica si el visitante está autorizado usando las herramientas disponibles
-6. Si está autorizado, informa que abrirás la puerta y notificarás al residente
-7. Si no está autorizado, pide al residente que confirme o transfiere a un guardia
+FLUJO PRINCIPAL DE CONVERSACIÓN:
 
-REGLAS:
-- Sé cortés pero eficiente
-- Habla en español mexicano
-- Si el visitante no proporciona información clara, pide que repita
-- Nunca reveles información sensible sobre los residentes
-- Si detectas una situación sospechosa, transfiere a un guardia humano
+1. SALUDO INICIAL:
+   "Buenas [tardes/noches], bienvenido a [nombre del condominio]. Soy el sistema de seguridad. ¿En qué puedo ayudarle?"
+
+2. IDENTIFICAR AL VISITANTE:
+   - Pregunta: "¿Me podría dar su nombre, por favor?"
+   - Guarda el nombre para usarlo durante la conversación
+
+3. IDENTIFICAR EL DESTINO:
+   El visitante puede decir:
+   - Número de casa/departamento: "Voy a la casa 16" o "Al departamento 5B"
+   - Nombre del residente: "Vengo con Carlos" o "Busco a la señora María"
+   - Ambos: "Voy con Juan de la casa 8"
+
+   Si solo da un dato, está bien. Usa find_resident para buscar.
+
+4. VERIFICAR AUTORIZACIÓN:
+   PRIMERO usa check_preauthorized_visitor para ver si hay una autorización previa.
+
+   CASO A - VISITANTE PRE-AUTORIZADO:
+   Si el residente ya reportó la visita previamente:
+   - "Perfecto, [nombre del visitante]. El residente ya nos notificó de su visita. Le abro enseguida."
+   - Usa open_gate para abrir
+   - "Listo, puede pasar. Que tenga buen día."
+
+   CASO B - VISITANTE NO PRE-AUTORIZADO:
+   Si no hay autorización previa:
+   - "Un momento por favor, [nombre]. Voy a comunicarme con el residente para confirmar."
+   - Usa request_authorization para enviar WhatsApp al residente
+   - Espera la respuesta (el sistema te notificará)
+
+   Si el residente AUTORIZA:
+   - "Listo [nombre], el residente ha autorizado su ingreso. Le abro la puerta."
+   - Usa open_gate para abrir
+
+   Si el residente NO AUTORIZA o no responde:
+   - "Lo siento, no hemos podido confirmar su visita con el residente."
+   - "¿Desea que lo comunique con un guardia de seguridad?"
+   - Si dice sí, usa transfer_to_guard
+
+5. CASOS ESPECIALES:
+
+   DELIVERY/UBER/PAQUETERÍA:
+   - Pregunta qué empresa es (Uber, Rappi, DHL, etc.)
+   - Pregunta el destino (casa/depto o nombre)
+   - Sigue el flujo normal de autorización
+
+   EMERGENCIAS:
+   - Si detectas una emergencia, transfiere inmediatamente a guardia
+   - "Entiendo, lo comunico con seguridad de inmediato."
+   - Usa transfer_to_guard
+
+   RESIDENTE QUE OLVIDÓ LLAVE:
+   - Verifica identidad preguntando datos
+   - Usa verify_resident para confirmar
+   - Si es válido, abre la puerta
+
+REGLAS IMPORTANTES:
+- Sé cortés pero eficiente, no hagas preguntas innecesarias
+- Habla en español mexicano natural
+- Usa el nombre del visitante cuando lo tengas
+- NUNCA reveles información de los residentes (nombres, teléfonos, etc.)
+- Si algo te parece sospechoso, transfiere a guardia humano
+- Si el visitante se molesta o insiste, ofrece transferir a guardia
 
 HERRAMIENTAS DISPONIBLES:
-- check_visitor: Verificar si un visitante está pre-autorizado
-- find_resident: Buscar un residente por nombre o unidad
-- notify_resident: Notificar al residente sobre el visitante
-- open_gate: Abrir la puerta de acceso
-- get_recent_plates: Obtener placas detectadas recientemente por las cámaras
-- transfer_to_guard: Transferir la llamada a un guardia humano
+- find_resident: Buscar residente por nombre o número de unidad
+- check_preauthorized_visitor: Verificar si hay autorización previa
+- request_authorization: Enviar WhatsApp al residente pidiendo autorización
+- open_gate: Abrir la puerta/portón de acceso
+- transfer_to_guard: Transferir llamada a guardia humano (extensión {self.guard_extension})
+- log_visit: Registrar la visita en bitácora
 """
 
     async def start(self):
@@ -183,16 +245,18 @@ HERRAMIENTAS DISPONIBLES:
         name = event.get("name")
         arguments = event.get("arguments", "{}")
 
-        logger.info(f"Function call: {name}({arguments})")
+        logger.info(f"Function call: {name}({arguments}) [tenant: {self.tenant_id}]")
 
         try:
             args = json.loads(arguments)
             result = await execute_tool(
-                name,
-                args,
-                self.settings,
-                self.tenant_id,
-                self.channel_id
+                name=name,
+                args=args,
+                settings=self.settings,
+                tenant_id=self.tenant_id,
+                channel_id=self.channel_id,
+                ari_handler=self.ari_handler,
+                guard_extension=self.guard_extension
             )
 
             # Send function result back to OpenAI
@@ -223,34 +287,60 @@ HERRAMIENTAS DISPONIBLES:
             await self.ws.send(json.dumps(error_response))
 
     async def _stream_audio(self):
-        """Stream audio from Asterisk to OpenAI"""
-        # This would use Asterisk's external media feature
-        # For now, we'll set up the infrastructure
+        """Stream audio from Asterisk to OpenAI via AudioSocket bridge"""
         logger.info(f"Audio streaming started for channel {self.channel_id}")
 
-        # In production, this would:
-        # 1. Receive RTP audio from Asterisk external media
-        # 2. Convert to PCM16 if needed
-        # 3. Send to OpenAI via WebSocket
+        if not self.audio_bridge:
+            logger.warning(f"No audio bridge configured for channel {self.channel_id}")
+            return
 
+        # Set up audio callback from AudioSocket to forward to OpenAI
+        def on_audio_from_asterisk(audio_data: bytes):
+            """Called when audio is received from Asterisk"""
+            try:
+                self.audio_buffer.put_nowait(audio_data)
+            except asyncio.QueueFull:
+                pass  # Drop audio if buffer is full
+
+        self.audio_bridge.set_audio_callback(self.channel_id, on_audio_from_asterisk)
+
+        # Process audio buffer and send to OpenAI
         while self.running:
-            await asyncio.sleep(0.1)
+            try:
+                # Get audio from buffer with timeout
+                audio_data = await asyncio.wait_for(
+                    self.audio_buffer.get(),
+                    timeout=0.1
+                )
+                await self.send_audio_to_openai(audio_data)
+
+            except asyncio.TimeoutError:
+                continue
+            except Exception as e:
+                logger.error(f"Error streaming audio: {e}")
+
+        logger.info(f"Audio streaming stopped for channel {self.channel_id}")
 
     async def send_audio_to_openai(self, audio_data: bytes):
-        """Send audio data to OpenAI"""
+        """Send audio data to OpenAI Realtime API"""
         if self.ws and self.running:
-            audio_b64 = base64.b64encode(audio_data).decode()
-            event = {
-                "type": "input_audio_buffer.append",
-                "audio": audio_b64
-            }
-            await self.ws.send(json.dumps(event))
+            try:
+                audio_b64 = base64.b64encode(audio_data).decode()
+                event = {
+                    "type": "input_audio_buffer.append",
+                    "audio": audio_b64
+                }
+                await self.ws.send(json.dumps(event))
+            except Exception as e:
+                logger.error(f"Error sending audio to OpenAI: {e}")
 
     async def _send_audio_to_asterisk(self, audio_data: bytes):
-        """Send audio data to Asterisk channel"""
-        # This would send audio via external media
-        # Implementation depends on your Asterisk setup
-        pass
+        """Send audio data to Asterisk channel via AudioSocket bridge"""
+        if self.audio_bridge and self.running:
+            try:
+                await self.audio_bridge.send_audio(self.channel_id, audio_data)
+            except Exception as e:
+                logger.error(f"Error sending audio to Asterisk: {e}")
 
     async def handle_dtmf(self, digit: str):
         """Handle DTMF digit"""

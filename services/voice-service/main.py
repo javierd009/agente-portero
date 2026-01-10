@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 
 from config import get_settings
 from ari_handler import ARIHandler
+from audio_bridge import AudioSocketBridge
 
 # Configure logging
 logging.basicConfig(
@@ -25,7 +26,11 @@ logger = logging.getLogger(__name__)
 class VoiceService:
     def __init__(self):
         self.settings = get_settings()
-        self.ari_handler = ARIHandler(self.settings)
+        self.audio_bridge = AudioSocketBridge(
+            host=self.settings.audio_bridge_host,
+            port=self.settings.audio_bridge_port
+        )
+        self.ari_handler = ARIHandler(self.settings, self.audio_bridge)
         self.running = False
 
     async def start(self):
@@ -34,6 +39,11 @@ class VoiceService:
         self.running = True
 
         try:
+            # Start the AudioSocket bridge first
+            await self.audio_bridge.start()
+            logger.info(f"AudioSocket bridge listening on port {self.settings.audio_bridge_port}")
+
+            # Then connect to Asterisk ARI
             await self.ari_handler.connect()
             logger.info("Connected to Asterisk ARI")
 
@@ -52,6 +62,7 @@ class VoiceService:
         logger.info("Stopping Voice Service...")
         self.running = False
         await self.ari_handler.disconnect()
+        await self.audio_bridge.stop()
 
 
 async def main():
