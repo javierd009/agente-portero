@@ -29,6 +29,7 @@ class ARIHandler:
         self.http_session: Optional[aiohttp.ClientSession] = None
         self.active_sessions: Dict[str, CallSession] = {}
         self._reconnect_delay = 5
+        self.connected = False
 
     @property
     def ws_url(self) -> str:
@@ -58,14 +59,17 @@ class ARIHandler:
             try:
                 logger.info(f"Connecting to ARI WebSocket...")
                 self.ws = await websockets.connect(self.ws_url)
+                self.connected = True
                 logger.info("ARI WebSocket connected")
 
                 # Start listening for events
                 await self._listen_events()
 
             except websockets.exceptions.ConnectionClosed:
+                self.connected = False
                 logger.warning("ARI WebSocket connection closed, reconnecting...")
             except Exception as e:
+                self.connected = False
                 logger.error(f"ARI WebSocket error: {e}")
 
             await asyncio.sleep(self._reconnect_delay)
@@ -229,6 +233,7 @@ class ARIHandler:
 
     async def disconnect(self):
         """Disconnect from ARI"""
+        self.connected = False
         # Stop all active sessions
         for session in list(self.active_sessions.values()):
             await session.stop()
