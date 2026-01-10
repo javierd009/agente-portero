@@ -16,6 +16,7 @@ from nlp_parser import (
     QueryLogsIntent,
     UnknownIntent
 )
+from security_agent import get_agent_response
 from config import settings
 
 logger = structlog.get_logger()
@@ -75,13 +76,12 @@ class WebhookHandler:
             # Mark as read
             await evolution_client.mark_as_read(message_id)
 
-            # Get resident from backend (verify they exist)
+            # Get resident from backend (may be None for visitors)
             resident = await self._get_resident_by_phone(phone)
+
+            # If not a registered resident, use AI security agent for conversation
             if not resident:
-                await evolution_client.send_text(
-                    phone,
-                    "❌ Número no registrado. Contacta al administrador para registrarte."
-                )
+                await self._handle_visitor_conversation(phone, text)
                 return
 
             # Parse intent
@@ -101,7 +101,7 @@ class WebhookHandler:
                 await self._handle_query_logs(phone, resident, intent)
 
             elif isinstance(intent, UnknownIntent):
-                await self._handle_unknown(phone, text)
+                await self._handle_unknown(phone, text, resident)
 
         except Exception as e:
             logger.error("webhook_process_error", error=str(e))
@@ -363,25 +363,54 @@ El administrador ha sido notificado."""
                 "❌ Error al consultar logs. Intenta más tarde."
             )
 
-    async def _handle_unknown(self, phone: str, message: str) -> None:
-        """Handle unknown intent"""
-        help_text = """🤖 No entendí tu mensaje. Comandos disponibles:
+    async def _handle_unknown(self, phone: str, message: str, resident: Dict[str, Any]) -> None:
+        """Handle unknown intent - use AI agent for natural conversation"""
+        try:
+            # Use AI security agent for conversational response
+            response = await get_agent_response(
+                phone=phone,
+                message=message,
+                resident_info=resident
+            )
+            await evolution_client.send_text(phone, response)
 
-📥 *Autorizar visitante:*
-"Viene Juan Pérez en 10 minutos"
+        except Exception as e:
+            logger.error("ai_agent_error", error=str(e))
+            # Fallback to help text
+            help_text = """🤖 ¿Cómo puedo ayudarte?
 
-🚪 *Abrir puerta:*
-"Abrir puerta"
+📥 *Autorizar visitante:* "Viene Juan Pérez"
+🚪 *Abrir puerta:* "Abrir puerta"
+📝 *Reportar:* "Reportar: luz fundida"
+📋 *Consultar:* "¿Quién vino hoy?"
 
-📝 *Reportar:*
-"Reportar: luz fundida en estacionamiento"
+I can also help you in English!"""
+            await evolution_client.send_text(phone, help_text)
 
-📋 *Consultar:*
-"¿Quién vino hoy?"
+    async def _handle_visitor_conversation(self, phone: str, message: str) -> None:
+        """Handle conversation with non-registered visitors using AI agent"""
+        try:
+            # Use AI security agent for visitor conversation
+            response = await get_agent_response(
+                phone=phone,
+                message=message,
+                resident_info=None  # No resident info for visitors
+            )
+            await evolution_client.send_text(phone, response)
 
-¿Necesitas ayuda? Escribe "ayuda" para más información."""
+            logger.info(
+                "visitor_conversation",
+                phone=phone[-4:],
+                message_preview=message[:50]
+            )
 
-        await evolution_client.send_text(phone, help_text)
+        except Exception as e:
+            logger.error("visitor_agent_error", error=str(e))
+            await evolution_client.send_text(
+                phone,
+                "Bienvenido a Residencial Sitnova. ¿A quién viene a visitar?\n\n"
+                "Welcome to Residencial Sitnova. Who are you visiting?"
+            )
 
 
 # Singleton instance
