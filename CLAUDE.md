@@ -45,21 +45,32 @@ agente_portero/
 - **Database**: PostgreSQL (Supabase)
 - **Auth**: Supabase Auth + JWT
 
-### Voice Service
+### Voice Service (PENDIENTE - NAT ISSUE)
 - **PBX**: Asterisk/FreePBX (ARI/AMI)
-- **AI**: OpenAI Realtime API (conversación natural)
-- **Voces**: OpenAI voices (fallback ElevenLabs para personalización)
+- **AI**: OpenAI Realtime API (conversacion natural)
+- **Voces**: OpenAI voices (fallback ElevenLabs para personalizacion)
 - **Protocol**: SIP/WebSocket
-- **Latencia**: <500ms (crítico para experiencia natural)
+- **Latencia**: <500ms (critico para experiencia natural)
+- **Estado**: Pendiente por problemas de NAT con Asterisk ARI
 
-### WhatsApp Service (NUEVO - CRÍTICO)
-- **Platform**: Evolution API (WhatsApp Business)
-- **NLP**: OpenAI GPT-4 (parseo de intenciones)
+### WhatsApp Service (ACTIVO)
+- **Platform**: Evolution API Externa (devevoapi.integratec-ia.com)
+- **Instancia**: Sitnova_portero
+- **NLP**: OpenAI GPT-4 (parseo de intenciones para residentes)
+- **AI Agent**: GPT-4o-mini via OpenRouter (conversacion natural)
 - **Flujos**:
-  - Residentes autorizan visitantes ("Viene Juan en 10 min")
-  - Apertura remota de puerta
-  - Reportes/bitácora ("Reportar foco fundido")
-  - Consultas de logs
+  - **Visitantes (no registrados)**: AI Security Agent conversa con ellos
+  - **Residentes**: Intent parsing para acciones especificas
+    - Autorizar visitantes ("Viene Juan en 10 min")
+    - Apertura remota de puerta
+    - Reportes/bitacora ("Reportar foco fundido")
+    - Consultas de logs
+  - **Unknown intent**: AI Agent responde naturalmente
+- **Caracteristicas del AI Agent**:
+  - Bilingue automatico (espanol/ingles)
+  - Memoria conversacional por telefono
+  - Actua como guardia de seguridad virtual
+  - Personalidad: Profesional, amigable, consciente de seguridad
 - **Impact**: Reduce llamadas de voz en 40-50%
 
 ### Vision Service (Edge)
@@ -129,35 +140,53 @@ FLUJOS PRINCIPALES:
    b. Registra intento en audit_logs
 ```
 
-### 2️⃣ Flujo: WhatsApp Bidireccional (NUEVO - Reduce 40% llamadas)
+### 2️⃣ Flujo: WhatsApp Bidireccional (Reduce 40% llamadas)
 
 ```
-CASO A: Residente avisa visitante esperado
+CASO A: Visitante no registrado escribe
+────────────────────────────────────────
+Visitante → WhatsApp: "Hola, vengo a visitar a alguien"
+        ↓
+WhatsApp Service: Verifica si es residente → NO
+        ↓
+AI Security Agent (OpenRouter GPT-4o-mini):
+  - Saluda profesionalmente
+  - Pregunta a quien visita
+  - Solicita nombre del visitante
+  - Mantiene memoria conversacional
+        ↓
+WhatsApp al visitante: Respuesta bilingue automatica (ES/EN)
+
+
+CASO B: Residente avisa visitante esperado
 ─────────────────────────────────────────
-Residente → WhatsApp: "Viene Juan Pérez en 10 minutos"
+Residente → WhatsApp: "Viene Juan Perez en 10 minutos"
         ↓
-WhatsApp Service (NLP):
-  - Parse: nombre="Juan Pérez", tiempo="10min"
-  - Crea autorización temporal (2 horas)
+WhatsApp Service: Verifica si es residente → SI
         ↓
-Backend → WhatsApp: "✅ Juan Pérez autorizado hasta 16:30"
+Intent Parser (GPT-4):
+  - Intent: authorize_visitor
+  - Parse: nombre="Juan Perez", tiempo="10min"
+  - Crea autorizacion temporal (2 horas)
+        ↓
+Backend → WhatsApp: "✅ Juan Perez autorizado hasta 16:30"
         ↓
 [Visitante llega y llama interfon]
         ↓
 AI reconoce nombre O Vision detecta placa registrada
         ↓
-Backend: Match con autorización → Abrir automáticamente
+Backend: Match con autorizacion → Abrir automaticamente
         ↓
-WhatsApp al residente: "🚪 Juan Pérez ingresó a las 14:32 (foto)"
+WhatsApp al residente: "🚪 Juan Perez ingreso a las 14:32 (foto)"
 
 COSTO: $0 (sin llamada de voz) vs $0.50 (con llamada)
 
 
-CASO B: Apertura remota
+CASO C: Apertura remota
 ─────────────────────────
 Residente → WhatsApp: "Abrir puerta"
         ↓
-WhatsApp Service: Verifica identidad del residente
+WhatsApp Service: Intent: open_gate
         ↓
 Backend → Hikvision: Abrir puerta + Capturar foto
         ↓
@@ -165,15 +194,26 @@ WhatsApp al residente: "✅ Puerta abierta (foto adjunta)"
 Backend → Registra en access_logs
 
 
-CASO C: Reportar incidente
+CASO D: Reportar incidente
 ────────────────────────────
 Residente → WhatsApp: "Reportar: Luz del estacionamiento fundida"
         ↓
-WhatsApp Service: Crea ticket + Extrae ubicación
+WhatsApp Service: Intent: create_report
         ↓
 Backend → Crea report en DB + Notifica admin
         ↓
 WhatsApp al residente: "✅ Reporte #1234 creado. Admin notificado"
+
+
+CASO E: Consulta general (Unknown Intent)
+─────────────────────────────────────────
+Residente → WhatsApp: "Cual es el horario de la piscina?"
+        ↓
+WhatsApp Service: Intent: unknown
+        ↓
+AI Security Agent: Responde naturalmente con contexto de residente
+        ↓
+WhatsApp al residente: Respuesta conversacional
 ```
 
 ### 3️⃣ Flujo: Detección Automática (Vision + Cache)
@@ -284,6 +324,24 @@ HIKVISION_PASSWORD=xxx
 BACKEND_API_URL=http://localhost:8000
 ```
 
+### WhatsApp Service (.env)
+```env
+# Evolution API Externa
+EVOLUTION_API_URL=https://devevoapi.integratec-ia.com
+EVOLUTION_API_KEY=xxx
+EVOLUTION_INSTANCE=Sitnova_portero
+
+# OpenAI/OpenRouter (para AI Agent)
+OPENAI_API_KEY=xxx  # OpenRouter API key
+
+# Backend
+BACKEND_API_URL=http://localhost:8000
+BACKEND_API_KEY=xxx
+
+# Redis
+REDIS_URL=redis://localhost:6379/0
+```
+
 ### Dashboard (.env.local)
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
@@ -327,9 +385,10 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ## AI Assistant Guidelines
 
 ### Prioridades de Desarrollo
-1. **Voice Service** - SIP + OpenAI Realtime (core del producto)
-2. **Vision Service** - YOLO + OCR para placas/cedulas
-3. **Dashboard** - UI multi-condominio
+1. **Voice Service** - Resolver NAT issue con Asterisk ARI (bloqueado)
+2. **WhatsApp Service** - Ya implementado con AI Security Agent bilingue
+3. **Vision Service** - YOLO + OCR para placas/cedulas
+4. **Dashboard** - UI multi-condominio
 
 ### Cuando Generar Codigo
 - Incluir type hints/annotations

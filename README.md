@@ -65,12 +65,18 @@
 - Transferencia a guardia humano en situaciones sospechosas
 - Audio bidireccional de alta calidad (PCM16)
 
-✅ **WhatsApp Service (Evolution API + GPT-4)**
-- Pre-autorización de visitantes
+✅ **WhatsApp Service (Evolution API Externa + OpenRouter)**
+- Pre-autorizacion de visitantes
 - Apertura remota de puertas
-- Creación de reportes de mantenimiento/seguridad
-- Consulta de bitácora de acceso
-- Intent parsing automático con GPT-4 function calling
+- Creacion de reportes de mantenimiento/seguridad
+- Consulta de bitacora de acceso
+- Intent parsing automatico con GPT-4 function calling
+- **Agente IA de Seguridad Bilingue** (GPT-4o-mini via OpenRouter)
+  - Responde automaticamente en espanol e ingles
+  - Memoria conversacional por telefono
+  - Actua como guardia de seguridad virtual
+  - Visitantes (no registrados) conversan con el AI agent
+  - Residentes usan intent parsing o AI agent para consultas generales
 
 ✅ **Backend API (FastAPI + PostgreSQL)**
 - Arquitectura multi-tenant con aislamiento completo
@@ -111,8 +117,8 @@
 
 | Layer | Tecnología | Estado |
 |-------|-----------|--------|
-| **Voice** | Asterisk ARI + OpenAI Realtime API | ✅ 100% |
-| **Messaging** | Evolution API + GPT-4 Function Calling | ✅ 100% |
+| **Voice** | Asterisk ARI + OpenAI Realtime API | ⚠️ Pendiente (NAT) |
+| **Messaging** | Evolution API Externa + GPT-4 + OpenRouter | ✅ 100% |
 | **Backend** | FastAPI + SQLModel + PostgreSQL | ✅ 100% |
 | **Vision** | YOLOv10 + PaddleOCR + CUDA | 🚧 0% |
 | **Frontend** | Next.js 16 + Tailwind + shadcn/ui | 🚧 0% |
@@ -139,7 +145,8 @@
      ▼                          ▼
 ┌─────────────┐          ┌──────────────┐
 │Voice Service│          │WhatsApp Svc  │
-│(OpenAI RT)  │          │(GPT-4)       │
+│(OpenAI RT)  │          │(OpenRouter)  │
+│ ⚠️ NAT issue │          │ +AI Agent    │
 └──────┬──────┘          └──────┬───────┘
        │                        │
        └────────┬───────────────┘
@@ -249,17 +256,18 @@ open http://localhost:8000/docs
 
 - [x] Backend API multi-tenant completo
 - [x] WhatsApp Service con GPT-4 function calling
-- [x] Voice Service con OpenAI Realtime API
+- [x] **Agente IA de Seguridad Bilingue** (GPT-4o-mini via OpenRouter)
 - [x] Suite de tests automatizados
-- [x] Documentación profesional
+- [x] Documentacion profesional
 - [x] Docker Compose para desarrollo
 - [x] Scripts de setup y seed data
 
 ### En Progreso
 
+- [ ] Voice Service con OpenAI Realtime API (pendiente por problemas NAT con Asterisk ARI)
 - [ ] Dashboard web (Next.js 16)
 - [ ] Vision Service (YOLO + OCR)
-- [ ] Deployment a producción
+- [ ] Deployment a produccion
 - [ ] Testing con cliente piloto
 
 Para más detalles: [PROJECT_STATUS.md](./PROJECT_STATUS.md)
@@ -434,9 +442,11 @@ MIT License - ver [LICENSE](LICENSE) para más detalles.
 ## 🎯 Roadmap
 
 ### Q1 2026 (Ahora)
-- [x] Core del sistema (Backend + WhatsApp + Voice)
+- [x] Core del sistema (Backend + WhatsApp)
+- [x] Agente IA de Seguridad Bilingue (OpenRouter + GPT-4o-mini)
 - [x] Testing automatizado
-- [x] Documentación
+- [x] Documentacion
+- [ ] Voice Service (resolver NAT con Asterisk ARI)
 - [ ] Dashboard web
 - [ ] Cliente piloto
 

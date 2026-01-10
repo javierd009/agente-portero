@@ -1,8 +1,8 @@
 # Agente Portero - Estado del Proyecto
 
-**Fecha**: 6 de Enero, 2026
-**Versión**: 1.0-alpha
-**Estado**: Sistema Core Implementado - Listo para Testing
+**Fecha**: 9 de Enero, 2026
+**Version**: 1.0-alpha
+**Estado**: WhatsApp Service + AI Agent Implementado - Voice Service Pendiente (NAT)
 
 ---
 
@@ -50,41 +50,58 @@
 - `services/backend/api/v1/` - Endpoints REST
 - `services/backend/seed_data.py` - Datos de prueba
 
-#### 2. **WhatsApp Service** (Evolution API + GPT-4 Function Calling)
-- [x] Integración completa con Evolution API
+#### 2. **WhatsApp Service** (Evolution API Externa + OpenRouter)
+- [x] Integracion con Evolution API externa (devevoapi.integratec-ia.com)
+- [x] Instancia configurada: Sitnova_portero
+- [x] Webhook configurado para recibir mensajes
 - [x] Intent parsing con GPT-4 function calling:
   - `authorize_visitor` - Pre-autorizar visitantes
   - `open_gate` - Apertura remota de puerta
   - `create_report` - Crear reportes
-  - `query_logs` - Consultar bitácora
+  - `query_logs` - Consultar bitacora
+- [x] **Agente IA de Seguridad Bilingue** (NUEVO):
+  - Usa OpenRouter con GPT-4o-mini
+  - Responde automaticamente en espanol e ingles
+  - Memoria conversacional por telefono
+  - Actua como guardia de seguridad virtual
+- [x] Flujo actualizado:
+  - Visitantes (no registrados) → AI agent conversa con ellos
+  - Residentes → Intent parsing → acciones especificas
+  - Unknown intent → AI agent para respuestas naturales
 - [x] Webhook handler para mensajes entrantes
-- [x] Respuestas contextuales en español
-- [x] Registro automático en backend
+- [x] Respuestas contextuales bilingues
+- [x] Registro automatico en backend
 - [x] Session management con Redis
 
-**Reducción de costos**: WhatsApp reduce llamadas de voz en 40-50%
+**Reduccion de costos**: WhatsApp reduce llamadas de voz en 40-50%
 
 **Archivos clave:**
 - `services/whatsapp-service/main.py` - FastAPI webhook server
 - `services/whatsapp-service/nlp_parser.py` - GPT-4 intent parsing
-- `services/whatsapp-service/webhook_handler.py` - Procesador de mensajes
+- `services/whatsapp-service/webhook_handler.py` - Procesador de mensajes (flujo actualizado)
 - `services/whatsapp-service/evolution_client.py` - Cliente Evolution API
+- `services/whatsapp-service/security_agent.py` - **NUEVO: AI Security Agent bilingue**
+- `services/whatsapp-service/config.py` - Configuracion del servicio
 
-#### 3. **Voice Service** (Asterisk ARI + OpenAI Realtime API)
-- [x] Conexión WebSocket bidireccional con Asterisk ARI
-- [x] Integración con OpenAI Realtime API (<500ms latency)
+#### 3. **Voice Service** (Asterisk ARI + OpenAI Realtime API) - PENDIENTE
+- [x] Conexion WebSocket bidireccional con Asterisk ARI
+- [x] Integracion con OpenAI Realtime API (<500ms latency)
 - [x] Call session management
 - [x] Function calling (7 herramientas):
-  - `check_visitor` - Verificar autorización
+  - `check_visitor` - Verificar autorizacion
   - `find_resident` - Buscar residente
   - `notify_resident` - Notificar via WhatsApp
   - `open_gate` - Abrir puerta
   - `get_recent_plates` - Consultar placas detectadas
   - `transfer_to_guard` - Transferir a guardia humano
   - `register_visitor` - Registrar nuevo visitante
-- [x] Conversaciones naturales en español mexicano
+- [x] Conversaciones naturales en espanol mexicano
 - [x] Sistema de prompts optimizado
 - [x] Audio bidireccional (PCM16)
+- **⚠️ BLOQUEADO**: Problemas de NAT con Asterisk ARI impiden conexion
+
+**Estado actual**: El codigo esta listo pero no se puede probar debido a problemas
+de configuracion de red/NAT con el servidor Asterisk.
 
 **Archivos clave:**
 - `services/voice-service/main.py` - Entry point
@@ -164,11 +181,11 @@
 
 ### Tech Stack Actual
 
-| Componente | Tecnología | Estado |
+| Componente | Tecnologia | Estado |
 |------------|------------|--------|
 | **Backend API** | FastAPI + SQLModel + PostgreSQL | ✅ 100% |
-| **WhatsApp Service** | FastAPI + Evolution API + GPT-4 | ✅ 100% |
-| **Voice Service** | Asterisk ARI + OpenAI Realtime | ✅ 100% |
+| **WhatsApp Service** | Evolution API Externa + OpenRouter + GPT-4o-mini | ✅ 100% |
+| **Voice Service** | Asterisk ARI + OpenAI Realtime | ⚠️ Bloqueado (NAT) |
 | **Dashboard** | Next.js 15 + React 19 + shadcn/ui | ✅ 100% |
 | **Vision Service** | YOLOv10 + PaddleOCR (CUDA) | 🚧 0% |
 | **Database** | PostgreSQL 16 + Redis 7 | ✅ 100% |
@@ -201,28 +218,54 @@
 9. Llamada termina
 ```
 
-### Flujo de WhatsApp
+### Flujo de WhatsApp (Actualizado)
 
 ```
-1. Residente envía mensaje: "Viene Pedro Ramírez en 10 minutos"
+CASO A: Visitante no registrado
+───────────────────────────────
+1. Visitante envia mensaje: "Hola, vengo a visitar"
+   ↓
+2. Evolution API Externa (devevoapi.integratec-ia.com) → Webhook → WhatsApp Service
+   ↓
+3. WhatsApp Service: Verifica telefono → NO es residente
+   ↓
+4. AI Security Agent (OpenRouter GPT-4o-mini):
+   - Saluda profesionalmente
+   - Responde en el idioma del usuario (ES/EN)
+   - Mantiene memoria conversacional
+   ↓
+5. WhatsApp Service responde: Mensaje del AI agent
+
+
+CASO B: Residente autoriza visitante
+────────────────────────────────────
+1. Residente envia mensaje: "Viene Pedro Ramirez en 10 minutos"
    ↓
 2. Evolution API → Webhook → WhatsApp Service
    ↓
-3. GPT-4 function calling → intent: "authorize_visitor"
+3. WhatsApp Service: Verifica telefono → SI es residente
    ↓
-4. WhatsApp Service → Backend API /visitors/authorize
+4. Intent Parser (GPT-4) → intent: "authorize_visitor"
    ↓
-5. Visitor creado con status="approved", valid_until=+2 horas
+5. WhatsApp Service → Backend API /visitors/authorize
    ↓
-6. WhatsApp Service responde: "✅ Pedro Ramírez autorizado"
+6. Visitor creado con status="approved", valid_until=+2 horas
    ↓
-7. Cuando Pedro llegue y llame:
-   - Voice Service consulta: check_visitor("Pedro Ramírez")
-   - Backend retorna: authorized=true
-   - Voice Service abre puerta automáticamente
+7. WhatsApp Service responde: "✅ Pedro Ramirez autorizado"
+
+
+CASO C: Residente con consulta general
+──────────────────────────────────────
+1. Residente envia: "Cual es el horario de la piscina?"
+   ↓
+2. Intent Parser → intent: "unknown"
+   ↓
+3. AI Security Agent (con contexto de residente)
+   ↓
+4. Respuesta conversacional natural
 ```
 
-**Ahorro de costos**: Esta pre-autorización evita la llamada de voz completa.
+**Ahorro de costos**: Pre-autorizacion via WhatsApp evita llamadas de voz.
 
 ---
 
@@ -270,14 +313,15 @@ agente_portero/
 │   │   ├── seed_data.py     # Datos de prueba
 │   │   └── test_backend_api.py
 │   │
-│   ├── whatsapp-service/     # ✅ Evolution API + GPT-4
+│   ├── whatsapp-service/     # ✅ Evolution API Externa + OpenRouter
 │   │   ├── evolution_client.py
 │   │   ├── nlp_parser.py    # Intent parsing
-│   │   ├── webhook_handler.py
+│   │   ├── webhook_handler.py  # Flujo visitante/residente actualizado
+│   │   ├── security_agent.py   # AI Security Agent bilingue (NUEVO)
 │   │   ├── test_whatsapp_flow.py
 │   │   └── EXAMPLES.md
 │   │
-│   ├── voice-service/        # ✅ Asterisk ARI + OpenAI Realtime
+│   ├── voice-service/        # ⚠️ Asterisk ARI + OpenAI Realtime (NAT bloqueado)
 │   │   ├── ari_handler.py
 │   │   ├── call_session.py
 │   │   ├── tools.py         # Function calling
@@ -397,27 +441,32 @@ cd services/voice-service && python test_voice_service.py
 
 ---
 
-## 🎯 Próximos Pasos
+## 🎯 Proximos Pasos
 
 ### Fase 2 (Inmediato - Semana 1-2)
 
-1. **Dashboard Multi-Tenant**
+1. **Resolver NAT Issue con Voice Service**
+   - Diagnosticar problemas de conexion Asterisk ARI
+   - Configurar port forwarding o VPN si es necesario
+   - Probar con servidor Asterisk local vs remoto
+
+2. **Testing con Cliente Real (WhatsApp)**
+   - Configurar un condominio de prueba con Residencial Sitnova
+   - Probar flujo completo de WhatsApp end-to-end
+   - Ajustar prompts del AI Security Agent
+   - Verificar memoria conversacional
+
+3. **Dashboard Multi-Tenant**
    - Implementar Next.js 16 con App Router
-   - Interface de administración de condominios
+   - Interface de administracion de condominios
    - Panel de logs en tiempo real
-   - Gestión de residentes/visitantes
+   - Gestion de residentes/visitantes
    - Sistema de reportes
 
-2. **Testing con Cliente Real**
-   - Configurar un condominio de prueba
-   - Probar flujo completo end-to-end
-   - Ajustar prompts del agente de voz
-   - Optimizar tiempos de respuesta
-
-3. **Vision Service (Básico)**
-   - Detección de placas con YOLO
+4. **Vision Service (Basico)**
+   - Deteccion de placas con YOLO
    - OCR con EasyOCR
-   - Integración con Voice Service
+   - Integracion con WhatsApp Service
 
 ### Fase 3 (Producción - Semana 3-4)
 
@@ -441,15 +490,17 @@ cd services/voice-service && python test_voice_service.py
 
 ---
 
-## 🏆 Logros Técnicos
+## 🏆 Logros Tecnicos
 
 ✅ **Sistema multi-tenant completo** con aislamiento de datos
-✅ **Conversaciones de voz con IA** con latencia <500ms
-✅ **WhatsApp bidireccional** con intent parsing automático
+✅ **WhatsApp bidireccional** con intent parsing automatico
+✅ **Agente IA de Seguridad Bilingue** (GPT-4o-mini via OpenRouter)
 ✅ **Function calling** para acciones en tiempo real
+✅ **Flujo visitante/residente diferenciado** en WhatsApp
 ✅ **Suite de testing completa** con >90% coverage
-✅ **Documentación profesional** lista para producción
-✅ **Costo optimizado** con sistema híbrido WhatsApp + Voz
+✅ **Documentacion profesional** lista para produccion
+✅ **Costo optimizado** con sistema hibrido WhatsApp + AI
+⚠️ **Voice Service listo** pero bloqueado por NAT issue
 
 ---
 
@@ -461,6 +512,6 @@ cd services/voice-service && python test_voice_service.py
 
 ---
 
-**Última actualización**: 6 de Enero, 2026
-**Estado**: ✅ Core del sistema implementado y probado
-**Próximo milestone**: Dashboard + Testing con cliente real
+**Ultima actualizacion**: 9 de Enero, 2026
+**Estado**: ✅ WhatsApp Service + AI Agent implementado | ⚠️ Voice Service bloqueado (NAT)
+**Proximo milestone**: Resolver NAT + Testing con cliente real (Residencial Sitnova)

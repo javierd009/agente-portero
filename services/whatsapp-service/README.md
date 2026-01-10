@@ -1,27 +1,58 @@
 # WhatsApp Service - Agente Portero
 
-Servicio de comunicación bidireccional vía WhatsApp usando Evolution API.
+Servicio de comunicacion bidireccional via WhatsApp usando Evolution API externa + AI Security Agent.
 
-## 🎯 Propósito
+## 🎯 Proposito
 
-Permite a los residentes:
-- ✅ Autorizar visitantes esperados
-- 🚪 Abrir puerta remotamente
-- 📝 Reportar incidentes
-- 📋 Consultar logs de acceso
+**Para Residentes:**
+- Autorizar visitantes esperados
+- Abrir puerta remotamente
+- Reportar incidentes
+- Consultar logs de acceso
+
+**Para Visitantes (no registrados):**
+- Conversacion natural con AI Security Agent bilingue
+- El agente pregunta a quien visitan y recopila informacion
 
 **Impacto**: Reduce llamadas de voz en 40-50%, mejorando experiencia y reduciendo costos.
+
+## Configuracion Actual
+
+- **Evolution API Externa**: devevoapi.integratec-ia.com
+- **Instancia**: Sitnova_portero
+- **AI Agent**: GPT-4o-mini via OpenRouter (bilingue ES/EN)
 
 ## 🏗️ Arquitectura
 
 ```
-Residente WhatsApp → Evolution API → Webhook → NLP Parser (GPT-4)
-                                        ↓
-                            Intent Handler → Backend API
-                                        ↓
-                            Acción (abrir puerta, crear log, etc.)
-                                        ↓
-                            Respuesta → WhatsApp al residente
+FLUJO VISITANTE (no registrado):
+─────────────────────────────────
+Visitante WhatsApp → Evolution API Externa → Webhook
+                                               ↓
+                                    Verificar telefono → NO es residente
+                                               ↓
+                                    AI Security Agent (OpenRouter GPT-4o-mini)
+                                               ↓
+                                    Respuesta bilingue (ES/EN)
+
+
+FLUJO RESIDENTE:
+─────────────────
+Residente WhatsApp → Evolution API Externa → Webhook
+                                               ↓
+                                    Verificar telefono → SI es residente
+                                               ↓
+                                    NLP Parser (GPT-4) → Intent detectado?
+                                               ↓
+                    ┌──────────────────────────┴──────────────────────────┐
+                    ▼                                                      ▼
+              Intent conocido                                      Intent desconocido
+           (authorize, open_gate,                                          ↓
+            create_report, query)                              AI Security Agent
+                    ↓                                          (con contexto residente)
+           Intent Handler → Backend API
+                    ↓
+           Accion + Respuesta estructurada
 ```
 
 ## 🚀 Setup
@@ -52,6 +83,13 @@ El servicio estará disponible en `http://localhost:8002`
 
 ## 📱 Configurar Evolution API
 
+**Configuracion actual (Evolution API Externa):**
+
+1. URL: `https://devevoapi.integratec-ia.com`
+2. Instancia: `Sitnova_portero`
+3. Webhook configurado para recibir mensajes
+
+**Para nueva instalacion:**
 1. Instalar Evolution API: https://doc.evolution-api.com
 2. Crear instancia de WhatsApp Business
 3. Configurar webhook:
@@ -60,32 +98,51 @@ El servicio estará disponible en `http://localhost:8002`
    Events: messages.upsert
    ```
 
-## 🤖 Comandos Soportados
+## 🤖 Flujos Soportados
 
-### Autorizar visitante
+### Para Visitantes (AI Security Agent)
 ```
-Residente → "Viene Juan Pérez en 10 minutos"
-Sistema   → ✅ Juan Pérez autorizado hasta 16:30
+Visitante → "Hola, vengo a visitar a alguien"
+AI Agent  → "Bienvenido a Residencial Sitnova. Soy el sistema de seguridad virtual.
+             ¿A quien viene a visitar y podria darme su nombre?"
+
+Visitante → "Hi, I'm here to visit John"
+AI Agent  → "Welcome to Residencial Sitnova. I'm the virtual security system.
+             Could you please give me your name and John's unit number?"
 ```
 
-### Abrir puerta
+### Para Residentes
+
+**Autorizar visitante:**
+```
+Residente → "Viene Juan Perez en 10 minutos"
+Sistema   → ✅ Juan Perez autorizado hasta 16:30
+```
+
+**Abrir puerta:**
 ```
 Residente → "Abrir puerta"
 Sistema   → ✅ Puerta abierta (foto adjunta)
 ```
 
-### Reportar incidente
+**Reportar incidente:**
 ```
 Residente → "Reportar: luz fundida en estacionamiento"
 Sistema   → ✅ Reporte #1234 creado. Admin notificado
 ```
 
-### Consultar logs
+**Consultar logs:**
 ```
-Residente → "¿Quién vino hoy?"
+Residente → "¿Quien vino hoy?"
 Sistema   → 📋 Registros de acceso (today)
-            • 14:32 - Juan Pérez (visitor_entry)
-            • 16:10 - Uber delivery (visitor_entry)
+            - 14:32 - Juan Perez (visitor_entry)
+            - 16:10 - Uber delivery (visitor_entry)
+```
+
+**Consulta general (AI Agent):**
+```
+Residente → "¿Cual es el horario de la piscina?"
+AI Agent  → (respuesta conversacional con contexto del residente)
 ```
 
 ## 🧪 Testing
@@ -133,7 +190,8 @@ Logs estructurados en JSON:
 
 ## 💰 Costos Estimados
 
-- **GPT-4 NLP**: ~$0.01 por mensaje parseado
+- **GPT-4 NLP (intent parsing)**: ~$0.01 por mensaje
+- **GPT-4o-mini (AI Agent via OpenRouter)**: ~$0.0015 por mensaje
 - **Evolution API**: Gratis (self-hosted) o $20-50/mes (cloud)
 - **Total**: ~$30-80/mes para 50 casas
 
@@ -141,4 +199,15 @@ vs
 
 - **Llamadas OpenAI Realtime ahorradas**: $200-300/mes
 
-**Ahorro neto: ~$150-250/mes** 🎉
+**Ahorro neto: ~$150-250/mes**
+
+## 📁 Archivos Principales
+
+| Archivo | Descripcion |
+|---------|-------------|
+| `main.py` | FastAPI server + webhook endpoint |
+| `webhook_handler.py` | Procesa mensajes, enruta visitantes/residentes |
+| `security_agent.py` | AI Security Agent bilingue (OpenRouter) |
+| `nlp_parser.py` | Intent parsing con GPT-4 |
+| `evolution_client.py` | Cliente para Evolution API |
+| `config.py` | Configuracion del servicio |

@@ -2,6 +2,70 @@
 
 ## 📱 Flujos Completos de Usuario
 
+### Caso 0: Visitante No Registrado (AI Security Agent)
+
+```
+10:30 - Visitante desconocido escribe al WhatsApp
+──────────────────────────────────────────────────
+Visitante → WhatsApp: "Hola, buenos dias"
+
+Sistema: Verifica telefono → NO es residente registrado
+
+AI Security Agent (GPT-4o-mini via OpenRouter):
+- Detecta idioma: Espanol
+- Activa memoria conversacional
+
+AI Agent → WhatsApp:
+"Buenos dias, bienvenido a Residencial Sitnova. Soy el sistema de seguridad virtual.
+¿A quien viene a visitar y podria proporcionarme su nombre, por favor?"
+
+Visitante → WhatsApp: "Vengo a ver a Juan Perez de la casa 42, soy Pedro Garcia"
+
+AI Agent → WhatsApp:
+"Gracias Pedro. Voy a verificar con Juan Perez de la casa 42.
+¿Tiene alguna cita programada o es una visita no anunciada?"
+
+Visitante → WhatsApp: "Es una visita sorpresa"
+
+AI Agent → WhatsApp:
+"Entendido. Le recomiendo comunicarse directamente con Juan Perez para que
+autorice su ingreso. Tambien puede llamar al interfon cuando llegue a la entrada.
+¿Hay algo mas en lo que pueda ayudarle?"
+
+COSTO: ~$0.005 (3 mensajes × $0.0015/mensaje GPT-4o-mini)
+```
+
+---
+
+### Caso 0b: Visitante en Ingles (AI Security Agent)
+
+```
+11:00 - Visitante escribe en ingles
+─────────────────────────────────────
+Visitor → WhatsApp: "Hi, I need to enter"
+
+Sistema: Verifica telefono → NO es residente registrado
+
+AI Security Agent:
+- Detecta idioma: English
+- Responde en ingles automaticamente
+
+AI Agent → WhatsApp:
+"Hello, welcome to Residencial Sitnova. I'm the virtual security system.
+Who are you visiting and may I have your name, please?"
+
+Visitor → WhatsApp: "I'm here for a delivery to unit 15"
+
+AI Agent → WhatsApp:
+"Thank you. For deliveries, please go to the main entrance and use the intercom
+to contact unit 15. They will need to authorize your entry.
+Is there anything else I can help you with?"
+
+COSTO: ~$0.003 (2 mensajes × $0.0015/mensaje GPT-4o-mini)
+```
+
+---
+
 ### Caso 1: Residente Autoriza Visitante
 
 ```
@@ -264,18 +328,62 @@ AHORRO: $318/mes (50.5%) 🎉
 
 ---
 
-## 🎯 Métricas de Éxito
+---
+
+### Caso 6: Residente con Consulta General (AI Agent)
+
+```
+15:00 - Residente hace pregunta general
+───────────────────────────────────────
+Residente → WhatsApp: "¿Cual es el horario de la piscina?"
+
+Sistema: Verifica telefono → SI es residente (Maria Garcia, casa 8)
+
+Intent Parser (GPT-4): intent = "unknown" (no es authorize/open/report/query)
+
+AI Security Agent (con contexto de residente):
+{
+  "resident_info": {
+    "name": "Maria Garcia",
+    "unit": "casa 8"
+  }
+}
+
+AI Agent → WhatsApp:
+"Hola Maria. El horario de la piscina es de 8:00 AM a 8:00 PM todos los dias.
+Recuerda que los menores deben estar acompanados de un adulto.
+¿Hay algo mas en lo que pueda ayudarte?"
+
+COSTO: ~$0.0015 (1 mensaje GPT-4o-mini)
+```
+
+---
+
+## 🎯 Metricas de Exito
 
 ### KPIs a medir:
 - % de eventos resueltos sin llamada
-- Tiempo promedio de autorización
-- Satisfacción de residentes (NPS)
+- Tiempo promedio de autorizacion
+- Satisfaccion de residentes (NPS)
 - Costo por evento procesado
 - Uptime del servicio
 
 ### Targets:
-- ✅ 40%+ eventos sin llamada (WhatsApp)
-- ✅ 30%+ eventos por detección automática
-- ✅ <30% eventos requieren llamada
-- ✅ <10 seg tiempo de respuesta WhatsApp
-- ✅ 99.9% uptime
+- 40%+ eventos sin llamada (WhatsApp)
+- 30%+ eventos por deteccion automatica
+- <30% eventos requieren llamada
+- <10 seg tiempo de respuesta WhatsApp
+- 99.9% uptime
+
+---
+
+## 📊 Resumen de Costos por Flujo
+
+| Flujo | Costo Estimado |
+|-------|----------------|
+| Visitante AI Agent (3 msgs) | ~$0.005 |
+| Residente autoriza visitante | ~$0.01 |
+| Residente abre puerta | ~$0.01 |
+| Residente crea reporte | ~$0.01 |
+| Residente consulta logs | ~$0.01 |
+| Residente consulta general (AI) | ~$0.0015 |
