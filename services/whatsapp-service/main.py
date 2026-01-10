@@ -96,7 +96,7 @@ async def evolution_webhook(request: Request):
     try:
         payload = await request.json()
 
-        logger.debug("webhook_received", event=payload.get("event"))
+        logger.debug("webhook_received", event_type=payload.get("event"))
 
         # Process message asynchronously
         await webhook_handler.process_message(payload)
