@@ -91,7 +91,10 @@ services:
       # Environment
       - DEBUG=false
     ports:
-      - "8089:8089"  # AudioSocket bridge port for Asterisk
+      - target: 8089
+        published: 8089
+        protocol: tcp
+        mode: host  # Direct host port binding for AudioSocket
     networks:
       - IntegratecNet
     deploy:
