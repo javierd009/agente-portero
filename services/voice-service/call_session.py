@@ -362,5 +362,10 @@ HERRAMIENTAS DISPONIBLES:
             except Exception as e:
                 logger.error(f"Error closing OpenAI WebSocket: {e}")
 
-        # Hangup Asterisk channel
-        await self.ari_handler.hangup_channel(self.channel_id)
+        # Hangup Asterisk channel (only if using ARI)
+        if self.ari_handler:
+            await self.ari_handler.hangup_channel(self.channel_id)
+
+        # Close AudioSocket session
+        if self.audio_bridge:
+            await self.audio_bridge.close_session(self.channel_id)

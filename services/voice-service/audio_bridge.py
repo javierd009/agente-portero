@@ -234,9 +234,12 @@ class AudioSocketBridge:
                 )
                 self.sessions[channel_id] = session
 
-            # Notify about new session
+            # Notify about new session (async or sync callback)
             if self.on_new_session:
-                self.on_new_session(channel_id)
+                if asyncio.iscoroutinefunction(self.on_new_session):
+                    await self.on_new_session(channel_id)
+                else:
+                    self.on_new_session(channel_id)
 
             # Read audio loop
             while session.running and self.running:
