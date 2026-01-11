@@ -11,6 +11,7 @@ import httpx
 
 from config import Settings
 from tools import AGENT_TOOLS, execute_tool
+from audio_bridge import resample_audio, ASTERISK_SAMPLE_RATE, OPENAI_SAMPLE_RATE
 
 if TYPE_CHECKING:
     from ari_handler import ARIHandler
@@ -340,7 +341,9 @@ HERRAMIENTAS DISPONIBLES:
         """Send audio data to OpenAI Realtime API"""
         if self.ws and self.running:
             try:
-                audio_b64 = base64.b64encode(audio_data).decode()
+                # Resample from Asterisk 8kHz to OpenAI 24kHz
+                resampled = resample_audio(audio_data, ASTERISK_SAMPLE_RATE, OPENAI_SAMPLE_RATE)
+                audio_b64 = base64.b64encode(resampled).decode()
                 event = {
                     "type": "input_audio_buffer.append",
                     "audio": audio_b64
@@ -353,7 +356,9 @@ HERRAMIENTAS DISPONIBLES:
         """Send audio data to Asterisk channel via AudioSocket bridge"""
         if self.audio_bridge and self.running:
             try:
-                await self.audio_bridge.send_audio(self.channel_id, audio_data)
+                # Resample from OpenAI 24kHz to Asterisk 8kHz
+                resampled = resample_audio(audio_data, OPENAI_SAMPLE_RATE, ASTERISK_SAMPLE_RATE)
+                await self.audio_bridge.send_audio(self.channel_id, resampled)
             except Exception as e:
                 logger.error(f"Error sending audio to Asterisk: {e}")
 

@@ -7,15 +7,36 @@ import logging
 import struct
 from typing import Optional, Callable, Dict
 from dataclasses import dataclass
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 # Audio format constants
-SAMPLE_RATE = 16000  # 16kHz
-BYTES_PER_SAMPLE = 2  # 16-bit signed PCM
-CHUNK_MS = 20  # 20ms chunks
-SAMPLES_PER_CHUNK = int(SAMPLE_RATE * CHUNK_MS / 1000)  # 320 samples
-BYTES_PER_CHUNK = SAMPLES_PER_CHUNK * BYTES_PER_SAMPLE  # 640 bytes
+ASTERISK_SAMPLE_RATE = 8000   # Asterisk AudioSocket default: 8kHz
+OPENAI_SAMPLE_RATE = 24000    # OpenAI Realtime API: 24kHz
+BYTES_PER_SAMPLE = 2          # 16-bit signed PCM
+CHUNK_MS = 20                 # 20ms chunks
+
+
+def resample_audio(audio_data: bytes, from_rate: int, to_rate: int) -> bytes:
+    """Resample audio from one sample rate to another"""
+    if from_rate == to_rate:
+        return audio_data
+
+    # Convert bytes to numpy array (16-bit signed PCM)
+    audio_array = np.frombuffer(audio_data, dtype=np.int16)
+
+    # Calculate new length
+    new_length = int(len(audio_array) * to_rate / from_rate)
+
+    # Resample using linear interpolation
+    indices = np.linspace(0, len(audio_array) - 1, new_length)
+    resampled = np.interp(indices, np.arange(len(audio_array)), audio_array.astype(np.float32))
+
+    # Convert back to int16
+    resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+
+    return resampled.tobytes()
 
 
 @dataclass
