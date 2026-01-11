@@ -12,7 +12,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Audio format constants
-ASTERISK_SAMPLE_RATE = 8000   # Asterisk AudioSocket: always 8kHz (ulaw/alaw decoded to slin)
+ASTERISK_SAMPLE_RATE = 16000  # Asterisk AudioSocket with slin16: 16kHz signed linear PCM
 OPENAI_SAMPLE_RATE = 24000    # OpenAI Realtime API: 24kHz
 BYTES_PER_SAMPLE = 2          # 16-bit signed PCM
 CHUNK_MS = 20                 # 20ms chunks
