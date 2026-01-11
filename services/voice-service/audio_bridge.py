@@ -1,10 +1,11 @@
 """
 Audio Bridge - Handles bidirectional audio streaming between Asterisk and OpenAI
-Uses Asterisk External Media for RTP streaming
+Uses Asterisk AudioSocket for bidirectional audio streaming
 """
 import asyncio
 import logging
 import struct
+import uuid
 from typing import Optional, Callable, Dict
 from dataclasses import dataclass
 import numpy as np
@@ -12,7 +13,9 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Audio format constants
-ASTERISK_SAMPLE_RATE = 16000  # Asterisk AudioSocket with slin16: 16kHz signed linear PCM
+# AudioSocket protocol ALWAYS uses 8kHz regardless of channel format settings
+# See: https://docs.asterisk.org/Configuration/Channel-Drivers/AudioSocket/
+ASTERISK_SAMPLE_RATE = 8000   # AudioSocket: signed linear 16-bit 8kHz mono PCM
 OPENAI_SAMPLE_RATE = 24000    # OpenAI Realtime API: 24kHz
 BYTES_PER_SAMPLE = 2          # 16-bit signed PCM
 CHUNK_MS = 20                 # 20ms chunks
@@ -250,7 +253,14 @@ class AudioSocketBridge:
                 logger.error(f"Expected UUID message, got type {msg_type}")
                 return
 
-            channel_id = payload.decode('utf-8').strip('\x00')
+            # AudioSocket sends 16-byte binary UUID
+            # See: https://github.com/CyCoreSystems/audiosocket
+            if len(payload) == 16:
+                # Binary UUID format
+                channel_id = str(uuid.UUID(bytes=payload))
+            else:
+                # Text UUID format (fallback)
+                channel_id = payload.decode('utf-8').strip('\x00')
             logger.info(f"AudioSocket connection from channel {channel_id}")
 
             # Create or update session
