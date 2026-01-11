@@ -44,7 +44,8 @@ class CallSession:
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.running = False
         self.conversation_id: Optional[str] = None
-        self.audio_buffer: asyncio.Queue = asyncio.Queue(maxsize=100)
+        # Smaller buffer for lower latency (20ms chunks, ~500ms buffer max)
+        self.audio_buffer: asyncio.Queue = asyncio.Queue(maxsize=25)
 
         # Visitor info collected during conversation
         self.visitor_name: Optional[str] = None
@@ -316,22 +317,29 @@ HERRAMIENTAS DISPONIBLES:
             try:
                 self.audio_buffer.put_nowait(audio_data)
             except asyncio.QueueFull:
-                pass  # Drop audio if buffer is full
+                # Drop oldest chunk to make room (prevents latency buildup)
+                try:
+                    self.audio_buffer.get_nowait()
+                    self.audio_buffer.put_nowait(audio_data)
+                except:
+                    pass
 
         self.audio_bridge.set_audio_callback(self.channel_id, on_audio_from_asterisk)
 
         # Process audio buffer and send to OpenAI
+        # Use shorter timeout for lower latency (20ms = one audio chunk)
         while self.running:
             try:
-                # Get audio from buffer with timeout
+                # Get audio from buffer with minimal timeout
                 audio_data = await asyncio.wait_for(
                     self.audio_buffer.get(),
-                    timeout=0.1
+                    timeout=0.02  # 20ms timeout (one audio chunk)
                 )
                 await self.send_audio_to_openai(audio_data)
 
             except asyncio.TimeoutError:
-                continue
+                # No audio available, yield to other tasks
+                await asyncio.sleep(0.001)
             except Exception as e:
                 logger.error(f"Error streaming audio: {e}")
 

@@ -19,39 +19,37 @@ CHUNK_MS = 20                 # 20ms chunks
 
 
 def resample_audio(audio_data: bytes, from_rate: int, to_rate: int) -> bytes:
-    """Resample audio from one sample rate to another using high-quality resampling"""
+    """
+    Resample audio using fast linear interpolation.
+    Optimized for real-time audio with minimal latency.
+    """
     if from_rate == to_rate:
         return audio_data
 
     if len(audio_data) < 2:
         return audio_data
 
-    try:
-        from scipy import signal
+    # Fast linear interpolation (much faster than scipy for real-time)
+    audio_array = np.frombuffer(audio_data, dtype=np.int16)
 
-        # Convert bytes to numpy array (16-bit signed PCM)
-        audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+    if len(audio_array) == 0:
+        return audio_data
 
-        # Calculate resampling ratio
-        ratio = to_rate / from_rate
-        new_length = int(len(audio_array) * ratio)
+    ratio = to_rate / from_rate
+    new_length = int(len(audio_array) * ratio)
 
-        # Use scipy's high-quality resampling
-        resampled = signal.resample(audio_array, new_length)
+    if new_length == 0:
+        return audio_data
 
-        # Convert back to int16
-        resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+    # Use numpy's fast interpolation
+    old_indices = np.arange(len(audio_array))
+    new_indices = np.linspace(0, len(audio_array) - 1, new_length)
+    resampled = np.interp(new_indices, old_indices, audio_array.astype(np.float32))
 
-        return resampled.tobytes()
+    # Clip and convert back to int16
+    resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
 
-    except ImportError:
-        # Fallback to linear interpolation if scipy not available
-        audio_array = np.frombuffer(audio_data, dtype=np.int16)
-        new_length = int(len(audio_array) * to_rate / from_rate)
-        indices = np.linspace(0, len(audio_array) - 1, new_length)
-        resampled = np.interp(indices, np.arange(len(audio_array)), audio_array.astype(np.float32))
-        resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
-        return resampled.tobytes()
+    return resampled.tobytes()
 
 
 @dataclass
