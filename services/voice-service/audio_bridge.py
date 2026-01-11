@@ -19,24 +19,39 @@ CHUNK_MS = 20                 # 20ms chunks
 
 
 def resample_audio(audio_data: bytes, from_rate: int, to_rate: int) -> bytes:
-    """Resample audio from one sample rate to another"""
+    """Resample audio from one sample rate to another using high-quality resampling"""
     if from_rate == to_rate:
         return audio_data
 
-    # Convert bytes to numpy array (16-bit signed PCM)
-    audio_array = np.frombuffer(audio_data, dtype=np.int16)
+    if len(audio_data) < 2:
+        return audio_data
 
-    # Calculate new length
-    new_length = int(len(audio_array) * to_rate / from_rate)
+    try:
+        from scipy import signal
 
-    # Resample using linear interpolation
-    indices = np.linspace(0, len(audio_array) - 1, new_length)
-    resampled = np.interp(indices, np.arange(len(audio_array)), audio_array.astype(np.float32))
+        # Convert bytes to numpy array (16-bit signed PCM)
+        audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
 
-    # Convert back to int16
-    resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+        # Calculate resampling ratio
+        ratio = to_rate / from_rate
+        new_length = int(len(audio_array) * ratio)
 
-    return resampled.tobytes()
+        # Use scipy's high-quality resampling
+        resampled = signal.resample(audio_array, new_length)
+
+        # Convert back to int16
+        resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+
+        return resampled.tobytes()
+
+    except ImportError:
+        # Fallback to linear interpolation if scipy not available
+        audio_array = np.frombuffer(audio_data, dtype=np.int16)
+        new_length = int(len(audio_array) * to_rate / from_rate)
+        indices = np.linspace(0, len(audio_array) - 1, new_length)
+        resampled = np.interp(indices, np.arange(len(audio_array)), audio_array.astype(np.float32))
+        resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+        return resampled.tobytes()
 
 
 @dataclass
