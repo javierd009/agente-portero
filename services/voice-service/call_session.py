@@ -153,7 +153,7 @@ HERRAMIENTAS DISPONIBLES:
 
             self.ws = await websockets.connect(
                 self.openai_ws_url,
-                extra_headers=headers
+                additional_headers=headers
             )
             logger.info(f"Connected to OpenAI Realtime for channel {self.channel_id}")
 
