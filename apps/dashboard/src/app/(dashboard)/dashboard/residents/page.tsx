@@ -1,25 +1,90 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useTenantStore } from '@/store/tenant'
-import { apiClient } from '@/lib/api'
+import { apiClient, ResidentCreate } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { Plus, Search, Phone, Mail, MessageSquare, Home } from 'lucide-react'
 
 export default function ResidentsPage() {
   const { currentTenant } = useTenantStore()
   const tenantId = currentTenant?.id || ''
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  // Form state
+  const [formData, setFormData] = useState<Partial<ResidentCreate>>({
+    name: '',
+    unit: '',
+    phone: '',
+    email: '',
+    whatsapp: '',
+  })
 
   const { data: residents, isLoading } = useQuery({
     queryKey: ['residents', tenantId],
     queryFn: () => apiClient.getResidents(tenantId),
     enabled: !!tenantId,
   })
+
+  // Create resident mutation
+  const createMutation = useMutation({
+    mutationFn: (data: ResidentCreate) => {
+      if (!tenantId) {
+        throw new Error('No hay condominio seleccionado')
+      }
+      return apiClient.createResident(tenantId, data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['residents', tenantId] })
+      setIsAddDialogOpen(false)
+      setFormError(null)
+      resetForm()
+    },
+    onError: (error: Error) => {
+      console.error('Error creating resident:', error)
+      setFormError(error.message)
+    },
+  })
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      unit: '',
+      phone: '',
+      email: '',
+      whatsapp: '',
+    })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.name || !formData.unit) return
+
+    createMutation.mutate({
+      condominium_id: tenantId,
+      name: formData.name,
+      unit: formData.unit,
+      phone: formData.phone || undefined,
+      email: formData.email || undefined,
+      whatsapp: formData.whatsapp || undefined,
+    })
+  }
 
   const filteredResidents = residents?.filter(r =>
     r.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -35,11 +100,90 @@ export default function ResidentsPage() {
             Administra los residentes del condominio
           </p>
         </div>
-        <Button>
+        <Button onClick={() => setIsAddDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Agregar Residente
         </Button>
       </div>
+
+      {/* Add Resident Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Agregar Nuevo Residente</DialogTitle>
+            <DialogDescription>
+              Ingresa los datos del nuevo residente
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">Nombre completo *</Label>
+                <Input
+                  id="name"
+                  placeholder="Juan Perez"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="unit">Unidad/Departamento *</Label>
+                <Input
+                  id="unit"
+                  placeholder="A-101"
+                  value={formData.unit}
+                  onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Telefono</Label>
+                <Input
+                  id="phone"
+                  placeholder="+52 555 123 4567"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="juan@email.com"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="whatsapp">WhatsApp</Label>
+                <Input
+                  id="whatsapp"
+                  placeholder="+52 555 123 4567"
+                  value={formData.whatsapp}
+                  onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+                />
+              </div>
+            </div>
+            {formError && (
+              <p className="text-sm text-destructive mb-4">{formError}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => {
+                setIsAddDialogOpen(false)
+                setFormError(null)
+                resetForm()
+              }}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Guardando...' : 'Guardar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Search */}
       <div className="relative max-w-md">

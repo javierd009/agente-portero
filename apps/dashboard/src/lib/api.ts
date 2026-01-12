@@ -71,7 +71,14 @@ export const apiClient = {
 
   // Visitors
   getVisitors: (tenantId: string) =>
-    api<Visitor[]>('/api/v1/access/visitors', { tenantId }),
+    api<Visitor[]>('/api/v1/visitors/', { tenantId }),
+
+  createVisitor: (tenantId: string, data: VisitorCreate) =>
+    api<Visitor>('/api/v1/visitors/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      tenantId,
+    }),
 
   // Camera Events
   getCameraEvents: (tenantId: string, params?: { limit?: number }) => {
@@ -228,6 +235,17 @@ export interface Visitor {
   status: string
   created_at: string
   updated_at: string
+}
+
+export interface VisitorCreate {
+  condominium_id: string
+  resident_id?: string
+  name: string
+  id_number?: string
+  phone?: string
+  vehicle_plate?: string
+  reason?: string
+  authorized_by?: string
 }
 
 export interface CameraEvent {
