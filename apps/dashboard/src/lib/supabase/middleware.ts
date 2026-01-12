@@ -31,22 +31,29 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
+  // Use getSession instead of getUser for faster middleware execution
   const {
-    data: { user },
+    data: { session },
     error,
-  } = await supabase.auth.getUser()
+  } = await supabase.auth.getSession()
 
-  // Debug logging (remove in production)
-  console.log(`[Middleware] Path: ${request.nextUrl.pathname}, User: ${user?.email || 'none'}, Error: ${error?.message || 'none'}`)
+  const user = session?.user
 
-  // Protected routes
+  // Debug logging
+  console.log(`[Middleware] Path: ${request.nextUrl.pathname}, Session: ${session ? 'yes' : 'no'}, User: ${user?.email || 'none'}, Error: ${error?.message || 'none'}`)
+
+  // Protected routes - only check on initial page load, not prefetch
   const protectedPaths = ['/dashboard']
   const isProtectedPath = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   )
 
-  if (isProtectedPath && !user) {
-    console.log(`[Middleware] Redirecting to login - no user for protected path`)
+  // Skip auth check for prefetch requests
+  const isPrefetch = request.headers.get('purpose') === 'prefetch' ||
+                     request.headers.get('x-middleware-prefetch') === '1'
+
+  if (isProtectedPath && !session && !isPrefetch) {
+    console.log(`[Middleware] Redirecting to login - no session for protected path`)
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
@@ -58,7 +65,7 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith(path)
   )
 
-  if (isAuthPath && user) {
+  if (isAuthPath && session && !isPrefetch) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
