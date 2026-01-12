@@ -12,7 +12,10 @@ import structlog
 from config import settings
 
 logger = structlog.get_logger()
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+client = AsyncOpenAI(
+    api_key=settings.OPENAI_API_KEY,
+    base_url="https://openrouter.ai/api/v1"  # Using OpenRouter
+)
 
 
 # Intent schemas

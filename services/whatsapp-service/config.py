@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # OpenAI (for NLP intent parsing via OpenRouter)
     OPENAI_API_KEY: str  # OpenRouter key for chat/NLP
-    OPENAI_MODEL: str = "gpt-4-turbo-preview"  # or "gpt-4o"
+    OPENAI_MODEL: str = "openai/gpt-4o-mini"  # OpenRouter format: provider/model
 
     # OpenAI Direct (for Whisper audio transcription)
     OPENAI_WHISPER_KEY: Optional[str] = None  # Direct OpenAI key for Whisper STT
