@@ -14,8 +14,8 @@ services:
       # JWT
       - JWT_SECRET=${JWT_SECRET}
 
-      # Redis
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@evolution_redis:6379
+      # Redis (shared redis service on IntegratecNet)
+      - REDIS_URL=redis://redis:6379
 
       # Environment
       - ENVIRONMENT=production
@@ -46,11 +46,11 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_WHISPER_KEY=${OPENAI_WHISPER_KEY}
 
-      # Backend
-      - BACKEND_API_URL=http://backend:8000
+      # Backend (using external URL for reliability)
+      - BACKEND_API_URL=https://api-portero.integratec-ia.com
 
-      # Redis
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@evolution_redis:6379
+      # Redis (shared redis service on IntegratecNet)
+      - REDIS_URL=redis://redis:6379
 
       # Environment
       - DEBUG=false
@@ -73,22 +73,8 @@ services:
   # NOTE: Evolution API already running at devevoapi.integratec-ia.com
   # Instance: Sitnova_portero
 
-  # Redis (Cache & Sessions)
-  evolution_redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-    networks:
-      - IntegratecNet
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
+  # NOTE: Redis already running as 'redis' service on IntegratecNet (no password)
 
 networks:
   IntegratecNet:
     external: true
-
-volumes:
-  redis_data:
