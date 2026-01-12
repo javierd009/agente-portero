@@ -107,9 +107,10 @@ class WebhookHandler:
             # Get resident from backend (may be None for visitors)
             resident = await self._get_resident_by_phone(phone)
 
-            # If not a registered resident, use AI security agent for conversation
+            # If not a registered resident, ask them to register with administration
+            # NOTE: Only residents use WhatsApp. Visitors call via intercom.
             if not resident:
-                await self._handle_visitor_conversation(phone, text)
+                await self._handle_unregistered_number(phone, text)
                 return
 
             # Parse intent
@@ -415,30 +416,39 @@ El administrador ha sido notificado."""
 I can also help you in English!"""
             await evolution_client.send_text(phone, help_text)
 
-    async def _handle_visitor_conversation(self, phone: str, message: str) -> None:
-        """Handle conversation with non-registered visitors using AI agent"""
-        try:
-            # Use AI security agent for visitor conversation
-            response = await get_agent_response(
-                phone=phone,
-                message=message,
-                resident_info=None  # No resident info for visitors
-            )
-            await evolution_client.send_text(phone, response)
+    async def _handle_unregistered_number(self, phone: str, message: str) -> None:
+        """
+        Handle messages from unregistered phone numbers.
 
-            logger.info(
-                "visitor_conversation",
-                phone=phone[-4:],
-                message_preview=message[:50]
-            )
+        WhatsApp is only for registered residents. Visitors use the intercom.
+        Unregistered numbers should contact administration to be registered.
+        """
+        logger.info(
+            "unregistered_number_message",
+            phone=phone[-4:],
+            message_preview=message[:50]
+        )
 
-        except Exception as e:
-            logger.error("visitor_agent_error", error=str(e))
-            await evolution_client.send_text(
-                phone,
-                "Bienvenido a Residencial Sitnova. ¿A quién viene a visitar?\n\n"
-                "Welcome to Residencial Sitnova. Who are you visiting?"
-            )
+        # Send registration instructions in Spanish and English
+        response = """⚠️ *Número no registrado*
+
+Este servicio de WhatsApp es exclusivo para residentes registrados del condominio.
+
+Si eres residente y aún no estás registrado, por favor contacta a la administración para agregar tu número.
+
+Si eres visitante, por favor usa el interfón en la entrada para comunicarte con seguridad.
+
+---
+
+⚠️ *Unregistered Number*
+
+This WhatsApp service is exclusively for registered condominium residents.
+
+If you are a resident and not yet registered, please contact administration to add your phone number.
+
+If you are a visitor, please use the intercom at the entrance to contact security."""
+
+        await evolution_client.send_text(phone, response)
 
 
 # Singleton instance
