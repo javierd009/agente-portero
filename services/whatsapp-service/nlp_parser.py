@@ -14,7 +14,7 @@ from config import settings
 logger = structlog.get_logger()
 client = AsyncOpenAI(
     api_key=settings.OPENAI_API_KEY,
-    base_url="https://openrouter.ai/api/v1"  # Using OpenRouter
+    base_url="https://openrouter.ai/api/v1"
 )
 
 
@@ -24,7 +24,7 @@ class AuthorizeVisitorIntent(BaseModel):
     intent: str = "authorize_visitor"
     visitor_name: str
     visitor_vehicle_plate: Optional[str] = None
-    expected_time: Optional[str] = None  # "en 10 minutos", "a las 14:00"
+    expected_time: Optional[str] = None
     valid_until: Optional[datetime] = None
     notes: Optional[str] = None
 
@@ -32,14 +32,14 @@ class AuthorizeVisitorIntent(BaseModel):
 class OpenGateIntent(BaseModel):
     """Residente solicita abrir puerta"""
     intent: str = "open_gate"
-    gate_name: Optional[str] = "main"  # "main", "pedestrian", "parking"
-    urgency: str = "normal"  # "normal", "urgent"
+    gate_name: Optional[str] = "main"
+    urgency: str = "normal"
 
 
 class CreateReportIntent(BaseModel):
     """Residente reporta incidente"""
     intent: str = "create_report"
-    report_type: str  # "maintenance", "security", "noise", "other"
+    report_type: str
     description: str
     location: Optional[str] = None
     urgency: str = "normal"
@@ -48,7 +48,7 @@ class CreateReportIntent(BaseModel):
 class QueryLogsIntent(BaseModel):
     """Residente consulta logs"""
     intent: str = "query_logs"
-    query_type: str  # "today", "yesterday", "week", "visitor"
+    query_type: str
     visitor_name: Optional[str] = None
     date_range: Optional[str] = None
 
@@ -59,40 +59,147 @@ class UnknownIntent(BaseModel):
     original_message: str
 
 
-SYSTEM_PROMPT = """Eres un asistente de análisis de intenciones para un sistema de guardia virtual de condominios.
+SYSTEM_PROMPT = """Eres un asistente que analiza mensajes de WhatsApp de RESIDENTES de un condominio.
+Los residentes ya están identificados por su número de teléfono. Tu trabajo es detectar qué quieren hacer.
 
-Analiza mensajes de WhatsApp de residentes y extrae la intención (intent) y parámetros relevantes.
+IMPORTANTE: El remitente SIEMPRE es un residente registrado. Cuando dicen "viene X", X es el VISITANTE, no el residente.
 
 INTENTS SOPORTADOS:
 
-1. **authorize_visitor**: Residente avisa que viene un visitante
-   Ejemplos:
-   - "Viene Juan Pérez en 10 minutos"
-   - "Autorizar a María García hasta las 6pm"
-   - "Viene un Uber en auto gris placa ABC-123"
+1. **authorize_visitor**: Residente avisa que viene un visitante A SU CASA
+   - "Viene Juan Pérez en 10 minutos" → visitor_name="Juan Pérez"
+   - "Autorizar a María García" → visitor_name="María García"
+   - "Viene un Uber placa ABC-123" → visitor_name="Uber", visitor_vehicle_plate="ABC-123"
+   - "Va a llegar el plomero" → visitor_name="plomero"
 
-2. **open_gate**: Residente pide abrir puerta
-   Ejemplos:
+2. **open_gate**: Residente pide abrir puerta remotamente
    - "Abrir puerta"
-   - "Abre la entrada principal"
-   - "Urgente: abrir puerta peatonal"
+   - "Abre la entrada"
+   - "Abrir portón"
 
 3. **create_report**: Residente reporta un problema
-   Ejemplos:
    - "Reportar: luz fundida en estacionamiento"
-   - "Hay un foco prendido en área común"
-   - "Mucho ruido en la casa de al lado"
+   - "Hay una fuga de agua"
+   - "Mucho ruido en la casa 5"
 
-4. **query_logs**: Residente consulta historial
-   Ejemplos:
+4. **query_logs**: Residente consulta historial de visitas
    - "¿Quién vino hoy?"
    - "Mostrar visitas de la semana"
    - "¿Pasó Juan ayer?"
 
-5. **unknown**: No coincide con ningún intent conocido
+Usa la función apropiada para clasificar el mensaje."""
 
-Responde SOLO con JSON válido siguiendo el schema del intent detectado.
-"""
+# Tools definition (modern format)
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "authorize_visitor",
+            "description": "El residente autoriza la entrada de un visitante a su casa",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "visitor_name": {
+                        "type": "string",
+                        "description": "Nombre del visitante que viene (NO del residente)"
+                    },
+                    "visitor_vehicle_plate": {
+                        "type": "string",
+                        "description": "Placa del vehículo del visitante, si se menciona"
+                    },
+                    "expected_time": {
+                        "type": "string",
+                        "description": "Tiempo de llegada esperado (ej: 'en 10 minutos', 'a las 3pm')"
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Notas adicionales sobre el visitante"
+                    }
+                },
+                "required": ["visitor_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_gate",
+            "description": "El residente solicita abrir puerta/portón remotamente",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "gate_name": {
+                        "type": "string",
+                        "enum": ["main", "pedestrian", "parking"],
+                        "description": "Tipo de puerta a abrir"
+                    },
+                    "urgency": {
+                        "type": "string",
+                        "enum": ["normal", "urgent"],
+                        "description": "Urgencia de la solicitud"
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_report",
+            "description": "El residente reporta un problema o incidente",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "report_type": {
+                        "type": "string",
+                        "enum": ["maintenance", "security", "noise", "other"],
+                        "description": "Tipo de reporte"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Descripción del problema"
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Ubicación del problema"
+                    },
+                    "urgency": {
+                        "type": "string",
+                        "enum": ["normal", "urgent"],
+                        "description": "Urgencia del reporte"
+                    }
+                },
+                "required": ["description", "report_type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_logs",
+            "description": "El residente consulta historial de accesos/visitas",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query_type": {
+                        "type": "string",
+                        "enum": ["today", "yesterday", "week", "visitor"],
+                        "description": "Período de consulta"
+                    },
+                    "visitor_name": {
+                        "type": "string",
+                        "description": "Nombre de visitante específico a buscar"
+                    },
+                    "date_range": {
+                        "type": "string",
+                        "description": "Rango de fechas personalizado"
+                    }
+                },
+                "required": ["query_type"]
+            }
+        }
+    }
+]
 
 
 async def parse_intent(
@@ -110,10 +217,10 @@ async def parse_intent(
         Parsed intent object (one of the Intent models)
     """
     try:
-        # Build messages for GPT-4
+        # Build messages
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Mensaje: {message}"}
+            {"role": "user", "content": f"Mensaje del residente: {message}"}
         ]
 
         if context:
@@ -122,89 +229,22 @@ async def parse_intent(
                 "content": f"Contexto: {json.dumps(context, ensure_ascii=False)}"
             })
 
-        # Call GPT-4 with function calling
+        # Call with tools (modern format)
         response = await client.chat.completions.create(
             model=settings.OPENAI_MODEL,
             messages=messages,
-            functions=[
-                {
-                    "name": "authorize_visitor",
-                    "description": "Residente autoriza la entrada de un visitante",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "visitor_name": {"type": "string"},
-                            "visitor_vehicle_plate": {"type": "string"},
-                            "expected_time": {"type": "string"},
-                            "notes": {"type": "string"}
-                        },
-                        "required": ["visitor_name"]
-                    }
-                },
-                {
-                    "name": "open_gate",
-                    "description": "Residente solicita abrir puerta/portón",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "gate_name": {
-                                "type": "string",
-                                "enum": ["main", "pedestrian", "parking"]
-                            },
-                            "urgency": {
-                                "type": "string",
-                                "enum": ["normal", "urgent"]
-                            }
-                        }
-                    }
-                },
-                {
-                    "name": "create_report",
-                    "description": "Residente reporta un problema o incidente",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "report_type": {
-                                "type": "string",
-                                "enum": ["maintenance", "security", "noise", "other"]
-                            },
-                            "description": {"type": "string"},
-                            "location": {"type": "string"},
-                            "urgency": {
-                                "type": "string",
-                                "enum": ["normal", "urgent"]
-                            }
-                        },
-                        "required": ["description", "report_type"]
-                    }
-                },
-                {
-                    "name": "query_logs",
-                    "description": "Residente consulta historial de accesos",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query_type": {
-                                "type": "string",
-                                "enum": ["today", "yesterday", "week", "visitor"]
-                            },
-                            "visitor_name": {"type": "string"},
-                            "date_range": {"type": "string"}
-                        },
-                        "required": ["query_type"]
-                    }
-                }
-            ],
-            function_call="auto",
+            tools=TOOLS,
+            tool_choice="auto",
             temperature=0.1
         )
 
-        # Extract function call
+        # Extract tool call
         message_obj = response.choices[0].message
 
-        if message_obj.function_call:
-            function_name = message_obj.function_call.name
-            arguments = json.loads(message_obj.function_call.arguments)
+        if message_obj.tool_calls and len(message_obj.tool_calls) > 0:
+            tool_call = message_obj.tool_calls[0]
+            function_name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments)
 
             # Map function to intent model
             intent_map = {
