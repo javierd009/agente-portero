@@ -43,9 +43,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS - Permitir puertos dinamicos de desarrollo
+# CORS - Permitir dominios de produccion y desarrollo
 ALLOWED_ORIGINS = [
     "https://agente-portero.vercel.app",
+    "https://dashboard-portero.vercel.app",
     *[f"http://localhost:{port}" for port in range(3000, 3007)],
     *[f"http://127.0.0.1:{port}" for port in range(3000, 3007)],
 ]
@@ -53,6 +54,7 @@ ALLOWED_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # All Vercel preview deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
