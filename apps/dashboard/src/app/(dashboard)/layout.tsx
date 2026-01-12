@@ -9,9 +9,12 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) {
+  // Use getSession instead of getUser for faster server-side auth
+  // getSession reads from cookie, getUser makes network request
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session?.user) {
     redirect('/login')
   }
 
@@ -19,7 +22,7 @@ export default async function DashboardLayout({
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Header user={user} />
+        <Header user={session.user} />
         <main className="flex-1 overflow-y-auto bg-muted/30 p-6">
           {children}
         </main>
