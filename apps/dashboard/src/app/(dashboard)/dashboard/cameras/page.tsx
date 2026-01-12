@@ -69,13 +69,27 @@ export default function CamerasPage() {
     refetchInterval: 15000,
   })
 
+  // State for error messages
+  const [formError, setFormError] = useState<string | null>(null)
+
   // Create camera mutation
   const createMutation = useMutation({
-    mutationFn: (data: CameraCreate) => apiClient.createCamera(tenantId, data),
+    mutationFn: (data: CameraCreate) => {
+      console.log('Creating camera with data:', data, 'tenantId:', tenantId)
+      if (!tenantId) {
+        throw new Error('No hay condominio seleccionado')
+      }
+      return apiClient.createCamera(tenantId, data)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cameras', tenantId] })
       setIsAddDialogOpen(false)
+      setFormError(null)
       resetForm()
+    },
+    onError: (error: Error) => {
+      console.error('Error creating camera:', error)
+      setFormError(error.message)
     },
   })
 
@@ -85,13 +99,22 @@ export default function CamerasPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cameras', tenantId] })
     },
+    onError: (error: Error) => {
+      console.error('Error deleting camera:', error)
+      alert(`Error al eliminar: ${error.message}`)
+    },
   })
 
   // Test connection mutation
   const testMutation = useMutation({
     mutationFn: (cameraId: string) => apiClient.testCameraConnection(tenantId, cameraId),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['cameras', tenantId] })
+      alert(data.is_online ? '✅ Cámara conectada' : '❌ Cámara no responde')
+    },
+    onError: (error: Error) => {
+      console.error('Error testing camera:', error)
+      alert(`Error al probar conexión: ${error.message}`)
     },
   })
 
@@ -228,8 +251,14 @@ export default function CamerasPage() {
                   </div>
                 </div>
               </div>
+              {formError && (
+                <p className="text-sm text-destructive mb-4">{formError}</p>
+              )}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsAddDialogOpen(false)
+                  setFormError(null)
+                }}>
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending}>
