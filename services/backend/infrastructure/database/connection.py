@@ -35,10 +35,10 @@ def get_engine() -> AsyncEngine:
 
     if _engine is None:
         # SSL is required for Supabase connections
-        # prepared_statement_cache_size=0 is required for pgbouncer/Supabase pooler
+        # statement_cache_size=0 is required for pgbouncer/Supabase pooler
         connect_args = {
             "ssl": "require",
-            "prepared_statement_cache_size": 0,
+            "statement_cache_size": 0,
             "server_settings": {
                 "application_name": "agente-portero-backend"
             }
