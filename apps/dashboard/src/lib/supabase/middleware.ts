@@ -33,7 +33,11 @@ export async function updateSession(request: NextRequest) {
 
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser()
+
+  // Debug logging (remove in production)
+  console.log(`[Middleware] Path: ${request.nextUrl.pathname}, User: ${user?.email || 'none'}, Error: ${error?.message || 'none'}`)
 
   // Protected routes
   const protectedPaths = ['/dashboard']
@@ -42,6 +46,7 @@ export async function updateSession(request: NextRequest) {
   )
 
   if (isProtectedPath && !user) {
+    console.log(`[Middleware] Redirecting to login - no user for protected path`)
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
