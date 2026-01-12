@@ -9,22 +9,24 @@ import uuid
 from typing import Optional, Callable, Dict
 from dataclasses import dataclass
 import numpy as np
+from scipy import signal
 
 logger = logging.getLogger(__name__)
 
 # Audio format constants
-# AudioSocket protocol ALWAYS uses 8kHz regardless of channel format settings
+# AudioSocket ALWAYS uses 8kHz regardless of channel format settings
 # See: https://docs.asterisk.org/Configuration/Channel-Drivers/AudioSocket/
 ASTERISK_SAMPLE_RATE = 8000   # AudioSocket: signed linear 16-bit 8kHz mono PCM
 OPENAI_SAMPLE_RATE = 24000    # OpenAI Realtime API: 24kHz
 BYTES_PER_SAMPLE = 2          # 16-bit signed PCM
 CHUNK_MS = 20                 # 20ms chunks
+BYTES_PER_CHUNK = int(ASTERISK_SAMPLE_RATE * (CHUNK_MS / 1000.0) * BYTES_PER_SAMPLE)
 
 
 def resample_audio(audio_data: bytes, from_rate: int, to_rate: int) -> bytes:
     """
-    Resample audio using fast linear interpolation.
-    Optimized for real-time audio with minimal latency.
+    High-quality audio resampling using scipy's polyphase filter.
+    Properly handles anti-aliasing for downsampling.
     """
     if from_rate == to_rate:
         return audio_data
@@ -32,25 +34,23 @@ def resample_audio(audio_data: bytes, from_rate: int, to_rate: int) -> bytes:
     if len(audio_data) < 2:
         return audio_data
 
-    # Fast linear interpolation (much faster than scipy for real-time)
-    audio_array = np.frombuffer(audio_data, dtype=np.int16)
+    # PCM16 little-endian (standard for most systems)
+    audio_array = np.frombuffer(audio_data, dtype='<i2').astype(np.float64)
 
     if len(audio_array) == 0:
         return audio_data
 
-    ratio = to_rate / from_rate
-    new_length = int(len(audio_array) * ratio)
+    # Find the GCD to simplify the ratio
+    from math import gcd
+    g = gcd(from_rate, to_rate)
+    up = to_rate // g
+    down = from_rate // g
 
-    if new_length == 0:
-        return audio_data
+    # Use scipy's polyphase resampler - high quality with proper anti-aliasing
+    resampled = signal.resample_poly(audio_array, up, down)
 
-    # Use numpy's fast interpolation
-    old_indices = np.arange(len(audio_array))
-    new_indices = np.linspace(0, len(audio_array) - 1, new_length)
-    resampled = np.interp(new_indices, old_indices, audio_array.astype(np.float32))
-
-    # Clip and convert back to int16
-    resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+    # Clip and convert back to int16 little-endian
+    resampled = np.clip(resampled, -32768, 32767).astype('<i2')
 
     return resampled.tobytes()
 
@@ -246,6 +246,14 @@ class AudioSocketBridge:
         channel_id = None
 
         try:
+            # CRITICAL: Disable Nagle's algorithm for real-time audio
+            # This prevents TCP from batching small packets together
+            sock = writer.get_extra_info('socket')
+            if sock:
+                import socket
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                logger.debug("TCP_NODELAY enabled for AudioSocket connection")
+
             # First message should be UUID (channel ID)
             msg_type, payload = await self._read_message(reader)
 
@@ -286,6 +294,7 @@ class AudioSocketBridge:
                     self.on_new_session(channel_id)
 
             # Read audio loop
+            audio_chunk_count = 0
             while session.running and self.running:
                 try:
                     msg_type, payload = await asyncio.wait_for(
@@ -294,10 +303,18 @@ class AudioSocketBridge:
                     )
 
                     if msg_type == 0x10:  # Audio
+                        audio_chunk_count += 1
+                        # Log first few chunks for debugging
+                        if audio_chunk_count <= 3:
+                            logger.info(f"Audio chunk #{audio_chunk_count}: {len(payload)} bytes")
                         if session.on_audio_received:
                             session.on_audio_received(payload)
                     elif msg_type == 0x00:  # Hangup
                         logger.info(f"Hangup received for channel {channel_id}")
+                        break
+                    elif msg_type == 0x02:  # Error from Asterisk
+                        error_code = payload[0] if payload else 0
+                        logger.error(f"Asterisk error code: {error_code}")
                         break
 
                 except asyncio.TimeoutError:
@@ -331,10 +348,12 @@ class AudioSocketBridge:
     async def send_audio(self, channel_id: str, audio_data: bytes):
         """Send audio to Asterisk via AudioSocket"""
         if channel_id not in self.sessions:
+            logger.warning(f"send_audio: channel {channel_id} not in sessions")
             return
 
         session = self.sessions[channel_id]
         if not session.writer or not session.running:
+            logger.warning(f"send_audio: session not ready (writer={session.writer is not None}, running={session.running})")
             return
 
         try:
@@ -342,6 +361,10 @@ class AudioSocketBridge:
             header = struct.pack('>BH', 0x10, len(audio_data))
             session.writer.write(header + audio_data)
             await session.writer.drain()
+            # Log first send
+            if not hasattr(self, '_logged_first_send'):
+                logger.info(f"First audio sent to Asterisk: {len(audio_data)} bytes")
+                self._logged_first_send = True
         except Exception as e:
             logger.error(f"Error sending audio to {channel_id}: {e}")
 

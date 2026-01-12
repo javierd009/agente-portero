@@ -2,9 +2,11 @@
 
 Servicio de voz inteligente que maneja llamadas telefónicas entrantes usando **OpenAI Realtime API** + **Asterisk/FreePBX**.
 
-## Descripción
+## Descripcion
 
 Este servicio recibe llamadas SIP desde Asterisk, las conecta con OpenAI Realtime API para conversaciones naturales en tiempo real, y ejecuta acciones mediante function calling (verificar visitantes, abrir puertas, notificar residentes, etc.).
+
+> **Documentacion Tecnica Detallada**: Ver [docs/OPENAI_REALTIME_FREEPBX_INTEGRATION.md](/docs/OPENAI_REALTIME_FREEPBX_INTEGRATION.md) para la guia completa de integracion, troubleshooting y parametros tunables.
 
 ```
 Visitante llama → Asterisk → ARI WebSocket → Voice Service
@@ -262,8 +264,18 @@ OPENAI_REALTIME_MODEL=gpt-4o-realtime-preview-2024-12-17
 BACKEND_API_URL=http://localhost:8000
 
 # Voz
-DEFAULT_VOICE=alloy  # Opciones: alloy, echo, fable, onyx, nova, shimmer
+DEFAULT_VOICE=shimmer  # Opciones: alloy, shimmer, coral, sage, echo, ash, ballad, verse
 DEFAULT_LANGUAGE=es-MX
+
+# Audio Tuning
+NOISE_GATE_THRESHOLD=200      # RMS threshold para silenciar ruido (0=deshabilitado)
+PLAYBACK_PREBUFFER_FRAMES=10  # Frames a prebuffer antes de playback (200ms)
+OUTPUT_AUDIO_QUEUE_MAXSIZE=1000  # Tamano maximo de cola (~20s de audio)
+
+# VAD Tuning (server-side en OpenAI)
+VAD_THRESHOLD=0.6             # Sensibilidad VAD (0.5-0.9)
+VAD_PREFIX_PADDING_MS=300     # Audio antes de deteccion de voz
+VAD_SILENCE_DURATION_MS=800   # Silencio antes de respuesta AI
 
 # Debug
 DEBUG=true
@@ -271,13 +283,15 @@ DEBUG=true
 
 ### Voces disponibles
 
-OpenAI Realtime ofrece 6 voces:
-- `alloy` - Voz neutral (recomendada para seguridad)
+OpenAI Realtime ofrece las siguientes voces:
+- `alloy` - Voz neutral
+- `shimmer` - Voz femenina calida (recomendada para espanol)
+- `coral` - Voz femenina clara
+- `sage` - Voz masculina tranquila
 - `echo` - Voz masculina profunda
-- `fable` - Voz británica
-- `onyx` - Voz grave masculina
-- `nova` - Voz femenina energética
-- `shimmer` - Voz femenina cálida
+- `ash` - Voz masculina suave
+- `ballad` - Voz expresiva
+- `verse` - Voz versatil
 
 ## Testing
 
@@ -400,6 +414,16 @@ curl https://api.openai.com/v1/models \
 2. Verificar logs del Backend para errores
 3. Verificar que el tenant_id es correcto
 
+### Ajustes de audio (ruido/VAD)
+
+Si el audio se corta o el agente deja de responder, ajusta estos parametros:
+
+- `NOISE_GATE_THRESHOLD`: RMS minimo para considerar audio como voz (ej: 200-400)
+- `PLAYBACK_PREBUFFER_FRAMES`: frames a prebuffer antes de reproducir (ej: 10-15)
+- `OUTPUT_AUDIO_QUEUE_MAXSIZE`: tamano del buffer de salida (ej: 1000 = ~20s)
+- `VAD_THRESHOLD`: sensibilidad del VAD del servidor (ej: 0.6-0.8)
+- `VAD_SILENCE_DURATION_MS`: ms de silencio antes de responder (ej: 600-800)
+
 ### "No audio / garbled audio"
 
 **Problema**: No se escucha audio o está distorsionado.
@@ -408,6 +432,18 @@ curl https://api.openai.com/v1/models \
 1. Verificar formato de audio (debe ser PCM16)
 2. Verificar configuración de external media en Asterisk
 3. Verificar que el codec es `slin16`
+4. Si usas AudioSocket, confirma que el puerto expuesto coincida (host `9089` → container `8089`)
+5. Si usas Stasis/ARI, fuerza `slin16` con `CHANNEL(audioreadformat)` y `CHANNEL(audiowriteformat)`
+6. Si el audio sigue grave o muy rápido, revisa el tamaño del primer chunk en logs (320 bytes ≈ 8kHz, 640 bytes ≈ 16kHz)
+
+### "Audio se corta / habla muy rápido"
+
+**Problema**: El agente empieza a hablar y corta palabras o se acelera.
+
+**Solución**:
+1. Verificar que el sample rate del canal coincide con `AUDIO_SAMPLE_RATE`.
+2. Revisar logs de `User speech started - clearing audio queue` (barge-in) mientras el AI habla.
+3. Revisar logs de `Playback: ... silence=...` para detectar cortes por jitter.
 
 ## Arquitectura Avanzada
 

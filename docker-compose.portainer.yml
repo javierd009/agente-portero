@@ -81,8 +81,8 @@ services:
       - AUDIO_BRIDGE_HOST=0.0.0.0
       - AUDIO_BRIDGE_PORT=8089
 
-      # OpenAI Realtime
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # OpenAI Realtime (usar key directa de OpenAI, no OpenRouter)
+      - OPENAI_API_KEY=${OPENAI_WHISPER_KEY}
       - OPENAI_REALTIME_MODEL=gpt-4o-realtime-preview-2024-12-17
 
       # Backend
@@ -92,7 +92,7 @@ services:
       - DEBUG=false
     ports:
       - target: 8089
-        published: 8089
+        published: 9089
         protocol: tcp
         mode: host  # Direct host port binding for AudioSocket
     networks:

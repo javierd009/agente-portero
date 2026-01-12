@@ -21,6 +21,33 @@ vision AI (YOLO+OCR+Facial), y ofrece dashboard web multi-tenant.
 - **DRY**: Evitar duplicacion
 - **Security-First**: Multi-tenant aislado, audit logs
 
+## Infraestructura de Produccion
+
+### Servidores
+| Servidor | Ubicacion | Proposito |
+|----------|-----------|-----------|
+| **Contabo Cloud** | Nube (Alemania) | Docker Swarm + Portainer (todos los microservicios) |
+| **FreePBX** | On-premise (172.20.20.1) | Asterisk PBX para llamadas SIP |
+| **Mikrotik** | On-premise | Router/NAT, acceso via puerto 90 |
+
+### Accesos Externos (NAT)
+| Servicio | URL Externa | Destino Interno |
+|----------|-------------|-----------------|
+| Asterisk ARI | integrateccr.ddns.net:8880 | 172.20.20.1:8088 |
+| Mikrotik WebFig | integrateccr.ddns.net:90 | Router admin |
+
+### FreePBX/Asterisk
+- **Version**: Asterisk 22.5.2
+- **IP Local**: 172.20.20.1
+- **SSH**: root / Sitnova20@
+- **ARI User**: asterisk / asterisk123
+- **Configuracion ARI**: /etc/asterisk/ari_general_additional.conf (enabled=yes, allowed_origins=*)
+
+### Docker/Portainer (Contabo)
+- Todos los microservicios corren en Docker Swarm
+- Portainer para gestion visual de stacks
+- Acceso externo a FreePBX via NAT (no hairpin issues desde la nube)
+
 ## Tech Stack & Architecture
 
 ### Monorepo Structure
@@ -30,13 +57,20 @@ agente_portero/
 │   ├── backend/           # FastAPI + SQLModel (API central, orchestrator)
 │   ├── voice-service/     # SIP ↔ OpenAI Realtime (llamadas de voz)
 │   ├── whatsapp-service/  # Evolution API ↔ NLP (mensajes bidireccionales)
-│   └── vision-service/    # YOLO + OCR + Facial (detección automática)
+│   └── vision-service/    # YOLO + OCR + Facial (deteccion automatica)
 ├── apps/
 │   └── dashboard/         # Next.js 15 (multi-tenant UI)
 ├── supabase/
 │   └── migrations/        # SQL migrations
 └── docs/                  # Arquitectura y workflows
 ```
+
+### Documentacion Tecnica
+| Documento | Descripcion |
+|-----------|-------------|
+| `docs/OPENAI_REALTIME_FREEPBX_INTEGRATION.md` | Guia completa de integracion OpenAI Realtime + Asterisk AudioSocket |
+| `docs/VOICE_AUDIO_FIX.md` | Historial de fixes de audio en Voice Service |
+| `services/voice-service/README.md` | Documentacion del Voice Service |
 
 ### Backend (FastAPI)
 - **Runtime**: Python 3.11
@@ -45,13 +79,28 @@ agente_portero/
 - **Database**: PostgreSQL (Supabase)
 - **Auth**: Supabase Auth + JWT
 
-### Voice Service (PENDIENTE - NAT ISSUE)
-- **PBX**: Asterisk/FreePBX (ARI/AMI)
+### Voice Service (ACTIVO)
+- **PBX**: Asterisk/FreePBX 22.5.2 (ARI/AMI)
 - **AI**: OpenAI Realtime API (conversacion natural)
 - **Voces**: OpenAI voices (fallback ElevenLabs para personalizacion)
 - **Protocol**: SIP/WebSocket
 - **Latencia**: <500ms (critico para experiencia natural)
-- **Estado**: Pendiente por problemas de NAT con Asterisk ARI
+- **ARI Endpoint**: integrateccr.ddns.net:8880 (NAT → 172.20.20.1:8088)
+- **ARI Credentials**: asterisk / asterisk123
+- **Estado**: ARI habilitado y accesible desde internet
+
+### Voice Service Fixes (Repo)
+- **AudioSocket**: Puerto host `9089` → container `8089` alineado en `freepbx-config/extensions_agente_portero.conf` y `docker-compose.portainer.SIMPLE.yml`
+- **Stasis/ARI**: Dialplan ahora fuerza `slin16` para evitar audio grave/distorsionado (`services/voice-service/asterisk/extensions_agente_portero.conf`)
+- **Audio Bridge**: Se definio `BYTES_PER_CHUNK` para evitar error en External Media (`services/voice-service/audio_bridge.py`)
+- **Logs**: Mensajes de sample rate y deteccion automatica por tamaño de chunk (`services/voice-service/call_session.py`)
+- **Playback**: Sample rate y chunk size ahora se ajustan al rate configurado/detectado; buffer de salida mas amplio para evitar cortes (`services/voice-service/call_session.py`)
+- **Barge-in**: Ignora barge-in mientras hay audio en reproduccion/cola o el AI hablo recientemente; evita cortar frases (`services/voice-service/call_session.py`)
+- **Playout**: Prebuffer con pacing y mas tolerancia a silencios para evitar trabas (`services/voice-service/call_session.py`)
+- **Noise Gate**: Silencia ruido bajo para estabilizar VAD (`services/voice-service/call_session.py`)
+- **TCP_NODELAY**: Habilitado en AudioSocket para menor latencia (`services/voice-service/audio_bridge.py`)
+
+> **Documentacion Tecnica Completa**: Ver `docs/OPENAI_REALTIME_FREEPBX_INTEGRATION.md` para guia detallada de integracion, troubleshooting y parametros tunables.
 
 ### WhatsApp Service (ACTIVO)
 - **Platform**: Evolution API Externa (devevoapi.integratec-ia.com)
@@ -309,11 +358,30 @@ JWT_SECRET=xxx
 
 ### Voice Service (.env)
 ```env
+# Asterisk ARI
 ASTERISK_ARI_URL=http://pbx:8088/ari
 ASTERISK_ARI_USER=xxx
 ASTERISK_ARI_PASSWORD=xxx
+
+# OpenAI
 OPENAI_API_KEY=xxx
+
+# Backend
 BACKEND_API_URL=http://localhost:8000
+
+# Audio Tuning
+AUDIO_SAMPLE_RATE=8000              # AudioSocket siempre usa 8kHz
+NOISE_GATE_THRESHOLD=200            # RMS threshold (0=deshabilitado)
+PLAYBACK_PREBUFFER_FRAMES=10        # Frames a prebuffer (200ms)
+OUTPUT_AUDIO_QUEUE_MAXSIZE=1000     # ~20s de audio
+
+# VAD Tuning
+VAD_THRESHOLD=0.6                   # Sensibilidad (0.5-0.9)
+VAD_PREFIX_PADDING_MS=300
+VAD_SILENCE_DURATION_MS=800
+
+# Voice
+DEFAULT_VOICE=shimmer               # alloy, shimmer, coral, sage, echo, ash, ballad, verse
 ```
 
 ### Vision Service (.env)
@@ -385,7 +453,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ## AI Assistant Guidelines
 
 ### Prioridades de Desarrollo
-1. **Voice Service** - Resolver NAT issue con Asterisk ARI (bloqueado)
+1. **Voice Service** - ARI conectado, implementar audio streaming bidireccional
 2. **WhatsApp Service** - Ya implementado con AI Security Agent bilingue
 3. **Vision Service** - YOLO + OCR para placas/cedulas
 4. **Dashboard** - UI multi-condominio

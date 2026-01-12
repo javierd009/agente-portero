@@ -65,6 +65,8 @@ services:
       - OPENAI_REALTIME_MODEL=gpt-4o-realtime-preview-2024-12-17
       - BACKEND_API_URL=http://backend:8000
       - DEBUG=false
+    ports:
+      - "9089:8089"
     networks:
       - IntegratecNet
     deploy:

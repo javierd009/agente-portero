@@ -93,9 +93,9 @@ class VoiceService:
             self.http_app = self._create_http_app()
             self.http_runner = web.AppRunner(self.http_app)
             await self.http_runner.setup()
-            http_site = web.TCPSite(self.http_runner, "0.0.0.0", 8001)
+            http_site = web.TCPSite(self.http_runner, "0.0.0.0", 8091)
             await http_site.start()
-            logger.info("HTTP health server listening on port 8001")
+            logger.info("HTTP health server listening on port 8091")
 
             # Start the AudioSocket bridge with callback for new calls
             await self.audio_bridge.start(on_new_session=self._on_new_call)
