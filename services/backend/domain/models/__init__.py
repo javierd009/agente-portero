@@ -6,6 +6,7 @@ from .visitor import Visitor
 from .vehicle import Vehicle
 from .access_log import AccessLog
 from .camera_event import CameraEvent
+from .camera import Camera
 from .notification import Notification
 from .report import Report
 
@@ -17,6 +18,7 @@ __all__ = [
     "Vehicle",
     "AccessLog",
     "CameraEvent",
+    "Camera",
     "Notification",
     "Report",
 ]

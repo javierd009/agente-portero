@@ -14,6 +14,7 @@ from api.v1 import (
     access,
     notifications,
     camera_events,
+    cameras,
     condominiums,
     gates,
     residents,
@@ -65,6 +66,7 @@ app.include_router(visitors.router, prefix="/api/v1/visitors", tags=["visitors"]
 app.include_router(access.router, prefix="/api/v1/access", tags=["access"])
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
 app.include_router(camera_events.router, prefix="/api/v1/camera-events", tags=["camera-events"])
+app.include_router(cameras.router, prefix="/api/v1/cameras", tags=["cameras"])
 app.include_router(gates.router, prefix="/api/v1/gates", tags=["gates"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 
