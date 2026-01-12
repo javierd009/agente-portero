@@ -70,33 +70,8 @@ services:
   # NOTE: voice-service runs locally on FreePBX server (172.20.20.1) for low-latency audio
   # Configure it with: BACKEND_API_URL=https://api-portero.integratec-ia.com
 
-  # Evolution API (WhatsApp) - Si no lo tienes ya corriendo
-  evolution-api:
-    image: atendai/evolution-api:latest
-    environment:
-      # Authentication
-      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
-
-      # Database (deshabilitado - usa archivos locales)
-      - DATABASE_ENABLED=false
-
-      # UI
-      - QRCODE_COLOR=#198754
-    volumes:
-      - evolution_instances:/evolution/instances
-      - evolution_store:/evolution/store
-    networks:
-      - IntegratecNet
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.portero-evolution.rule=Host(`evolution-portero.integratec-ia.com`)"
-        - "traefik.http.routers.portero-evolution.entrypoints=websecure"
-        - "traefik.http.routers.portero-evolution.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.portero-evolution.loadbalancer.server.port=8080"
+  # NOTE: Evolution API already running at devevoapi.integratec-ia.com
+  # Instance: Sitnova_portero
 
   # Redis (Cache & Sessions)
   evolution_redis:
@@ -116,6 +91,4 @@ networks:
     external: true
 
 volumes:
-  evolution_instances:
-  evolution_store:
   redis_data:
