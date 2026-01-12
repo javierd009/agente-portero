@@ -107,6 +107,39 @@ export const apiClient = {
 
   getReportStats: (tenantId: string) =>
     api<ReportStats>('/api/v1/reports/stats/summary', { tenantId }),
+
+  // Cameras (VMS)
+  getCameras: (tenantId: string) =>
+    api<Camera[]>('/api/v1/cameras/', { tenantId }),
+
+  createCamera: (tenantId: string, data: CameraCreate) =>
+    api<Camera>('/api/v1/cameras/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      tenantId,
+    }),
+
+  updateCamera: (tenantId: string, cameraId: string, data: CameraUpdate) =>
+    api<Camera>(`/api/v1/cameras/${cameraId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      tenantId,
+    }),
+
+  deleteCamera: (tenantId: string, cameraId: string) =>
+    api<void>(`/api/v1/cameras/${cameraId}`, {
+      method: 'DELETE',
+      tenantId,
+    }),
+
+  testCameraConnection: (tenantId: string, cameraId: string) =>
+    api<CameraTestResult>(`/api/v1/cameras/${cameraId}/test`, {
+      method: 'POST',
+      tenantId,
+    }),
+
+  getCameraSnapshot: (tenantId: string, cameraId: string) =>
+    api<CameraSnapshot>(`/api/v1/cameras/${cameraId}/snapshot`, { tenantId }),
 }
 
 // Types
@@ -270,4 +303,59 @@ export interface ReportStats {
   pending: number
   in_progress: number
   resolved: number
+}
+
+// Camera types (VMS)
+export interface Camera {
+  id: string
+  condominium_id: string
+  name: string
+  location: string | null
+  camera_type: string
+  has_ptz: boolean
+  has_anpr: boolean
+  has_face: boolean
+  is_active: boolean
+  is_online: boolean
+  last_seen: string | null
+  created_at: string
+}
+
+export interface CameraCreate {
+  condominium_id: string
+  name: string
+  location?: string
+  host: string
+  port?: number
+  username: string
+  password: string
+  camera_type?: string
+  has_ptz?: boolean
+  has_anpr?: boolean
+  has_face?: boolean
+}
+
+export interface CameraUpdate {
+  name?: string
+  location?: string
+  host?: string
+  port?: number
+  username?: string
+  password?: string
+  is_active?: boolean
+  has_ptz?: boolean
+  has_anpr?: boolean
+  has_face?: boolean
+}
+
+export interface CameraTestResult {
+  camera_id: string
+  is_online: boolean
+  device_info: Record<string, unknown> | null
+}
+
+export interface CameraSnapshot {
+  camera_id: string
+  image: string  // base64 data URL
+  timestamp: string
 }
