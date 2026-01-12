@@ -67,46 +67,8 @@ services:
         - "traefik.http.routers.portero-whatsapp.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.portero-whatsapp.loadbalancer.server.port=8002"
 
-  # Voice Service
-  voice-service:
-    image: ghcr.io/javierd009/agente-portero-voice:latest
-    environment:
-      # Asterisk ARI
-      - ASTERISK_ARI_URL=${ASTERISK_ARI_URL:-http://integrateccr.ddns.net:8880/ari}
-      - ASTERISK_ARI_USER=${ASTERISK_ARI_USER:-asterisk}
-      - ASTERISK_ARI_PASSWORD=${ASTERISK_ARI_PASSWORD:-asterisk123}
-      - ASTERISK_ARI_APP=agente-portero
-
-      # Audio Bridge
-      - AUDIO_BRIDGE_HOST=0.0.0.0
-      - AUDIO_BRIDGE_PORT=8089
-
-      # OpenAI Realtime (usar key directa de OpenAI, no OpenRouter)
-      - OPENAI_API_KEY=${OPENAI_WHISPER_KEY}
-      - OPENAI_REALTIME_MODEL=gpt-4o-realtime-preview-2024-12-17
-
-      # Backend
-      - BACKEND_API_URL=http://backend:8000
-
-      # Environment
-      - DEBUG=false
-    ports:
-      - target: 8089
-        published: 9089
-        protocol: tcp
-        mode: host  # Direct host port binding for AudioSocket
-    networks:
-      - IntegratecNet
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.portero-voice.rule=Host(`voice-portero.integratec-ia.com`)"
-        - "traefik.http.routers.portero-voice.entrypoints=websecure"
-        - "traefik.http.routers.portero-voice.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.portero-voice.loadbalancer.server.port=8001"
+  # NOTE: voice-service runs locally on FreePBX server (172.20.20.1) for low-latency audio
+  # Configure it with: BACKEND_API_URL=https://api-portero.integratec-ia.com
 
   # Evolution API (WhatsApp) - Si no lo tienes ya corriendo
   evolution-api:
