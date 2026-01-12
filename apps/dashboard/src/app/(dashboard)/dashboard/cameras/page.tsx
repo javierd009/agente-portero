@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { useTenantStore } from '@/store/tenant'
-import { apiClient, Camera, CameraCreate } from '@/lib/api'
+import { apiClient, Camera, CameraCreate, CameraUpdate } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/utils'
 import {
   Camera as CameraIcon,
@@ -38,6 +38,8 @@ export default function CamerasPage() {
   const queryClient = useQueryClient()
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
   const [snapshotData, setSnapshotData] = useState<string | null>(null)
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false)
@@ -71,6 +73,13 @@ export default function CamerasPage() {
 
   // State for error messages
   const [formError, setFormError] = useState<string | null>(null)
+  const [editFormError, setEditFormError] = useState<string | null>(null)
+
+  // Edit form state
+  const [editFormData, setEditFormData] = useState<Partial<CameraUpdate>>({
+    name: '',
+    location: '',
+  })
 
   // Create camera mutation
   const createMutation = useMutation({
@@ -110,11 +119,27 @@ export default function CamerasPage() {
     mutationFn: (cameraId: string) => apiClient.testCameraConnection(tenantId, cameraId),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['cameras', tenantId] })
-      alert(data.is_online ? '✅ Cámara conectada' : '❌ Cámara no responde')
+      alert(data.is_online ? 'Camara conectada correctamente' : 'Camara no responde')
     },
     onError: (error: Error) => {
       console.error('Error testing camera:', error)
-      alert(`Error al probar conexión: ${error.message}`)
+      alert(`Error al probar conexion: ${error.message}`)
+    },
+  })
+
+  // Update camera mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ cameraId, data }: { cameraId: string; data: CameraUpdate }) =>
+      apiClient.updateCamera(tenantId, cameraId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cameras', tenantId] })
+      setIsEditDialogOpen(false)
+      setEditingCamera(null)
+      setEditFormError(null)
+    },
+    onError: (error: Error) => {
+      console.error('Error updating camera:', error)
+      setEditFormError(error.message)
     },
   })
 
@@ -127,6 +152,26 @@ export default function CamerasPage() {
       username: 'admin',
       password: '',
       camera_type: 'hikvision',
+    })
+  }
+
+  const handleOpenEditDialog = (camera: Camera) => {
+    setEditingCamera(camera)
+    setEditFormData({
+      name: camera.name,
+      location: camera.location || '',
+    })
+    setEditFormError(null)
+    setIsEditDialogOpen(true)
+  }
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingCamera || !editFormData.name) return
+
+    updateMutation.mutate({
+      cameraId: editingCamera.id,
+      data: editFormData,
     })
   }
 
@@ -268,6 +313,56 @@ export default function CamerasPage() {
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Camera Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Editar Camara</DialogTitle>
+              <DialogDescription>
+                Modifica los datos de la camara
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleEditSubmit}>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-name">Nombre</Label>
+                  <Input
+                    id="edit-name"
+                    placeholder="Entrada Principal"
+                    value={editFormData.name || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-location">Ubicacion</Label>
+                  <Input
+                    id="edit-location"
+                    placeholder="Porton vehicular"
+                    value={editFormData.location || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
+                  />
+                </div>
+              </div>
+              {editFormError && (
+                <p className="text-sm text-destructive mb-4">{editFormError}</p>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsEditDialogOpen(false)
+                  setEditingCamera(null)
+                  setEditFormError(null)
+                }}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? 'Guardando...' : 'Guardar'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Stats */}
@@ -381,7 +476,11 @@ export default function CamerasPage() {
                     <RefreshCw className={`h-4 w-4 mr-1 ${testMutation.isPending ? 'animate-spin' : ''}`} />
                     Test
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleOpenEditDialog(camera)}
+                  >
                     <Settings className="h-4 w-4" />
                   </Button>
                   <Button
