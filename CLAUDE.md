@@ -35,6 +35,8 @@ vision AI (YOLO+OCR+Facial), y ofrece dashboard web multi-tenant.
 |----------|-------------|-----------------|
 | Asterisk ARI | integrateccr.ddns.net:8880 | 172.20.20.1:8088 |
 | Vision Service | integrateccr.ddns.net:8002 | 172.20.20.1:8002 |
+| go2rtc Streaming | integrateccr.ddns.net:1984 | 172.20.20.1:1984 |
+| go2rtc WebRTC | integrateccr.ddns.net:8555 | 172.20.20.1:8555 |
 | Mikrotik WebFig | integrateccr.ddns.net:90 | Router admin |
 
 ### FreePBX/Asterisk
@@ -58,7 +60,8 @@ agente_portero/
 │   ├── backend/           # FastAPI + SQLModel (API central, orchestrator)
 │   ├── voice-service/     # SIP ↔ OpenAI Realtime (llamadas de voz)
 │   ├── whatsapp-service/  # Evolution API ↔ NLP (mensajes bidireccionales)
-│   └── vision-service/    # YOLO + OCR + Facial (deteccion automatica)
+│   ├── vision-service/    # YOLO + OCR + Facial (deteccion automatica)
+│   └── streaming/         # go2rtc (RTSP → WebRTC video streaming)
 ├── apps/
 │   └── dashboard/         # Next.js 15 (multi-tenant UI)
 ├── supabase/
@@ -73,6 +76,7 @@ agente_portero/
 | `docs/VOICE_AUDIO_FIX.md` | Historial de fixes de audio en Voice Service |
 | `services/voice-service/README.md` | Documentacion del Voice Service |
 | `services/vision-service/README.md` | Guia de deployment Edge Computing en FreePBX |
+| `services/streaming/README.md` | Guia de go2rtc para streaming WebRTC |
 
 ### Backend (FastAPI)
 - **Runtime**: Python 3.11
@@ -145,6 +149,30 @@ agente_portero/
 
 > **Deployment Manual**: Ver `services/vision-service/README.md` para guia paso a paso de instalacion en FreePBX
 
+### Streaming Service (go2rtc - WebRTC)
+- **Ubicacion**: On-premise en FreePBX (172.20.20.1:1984)
+- **Tecnologia**: go2rtc (RTSP → WebRTC converter)
+- **Latencia**: <1 segundo (vs 5-10s con HLS/DASH)
+- **Protocolo**: WebRTC con WebSocket signaling
+- **Streams configurados**:
+  - `entrada_main` - Stream principal 1080p (Channel 101)
+  - `entrada_sub` - Stream secundario 480p (Channel 102)
+- **Puertos**:
+  - `:1984` - API HTTP + WebSocket signaling
+  - `:8555` - WebRTC UDP/TCP
+- **Beneficios WebRTC**:
+  - Latencia ultra-baja para monitoreo en tiempo real
+  - Reproduccion nativa en navegadores (sin plugins)
+  - Soporte para multiples viewers simultaneos
+  - Auto-adaptacion de calidad segun bandwidth
+- **Dashboard Integration**:
+  - Hook: `useGoRTCStream` - Conexion WebRTC automatica
+  - Componente: `CameraStream` - Player individual con controles
+  - Componente: `CameraGrid` - Matrix 2x2, 3x3, 4x4
+  - Pagina: `/dashboard/cameras/live` - Vista en vivo
+
+> **Deployment Manual**: Ver `services/streaming/README.md` para guia de instalacion
+
 ### Dashboard (Next.js)
 - **Framework**: Next.js 16 (App Router)
 - **Styling**: Tailwind CSS + shadcn/ui
@@ -155,9 +183,14 @@ agente_portero/
   - `visionService.testCamera(url, credentials)` - Probar camara via edge
   - `visionService.getSnapshot(url, channelId)` - Obtener captura en base64
   - `visionService.listCameras(url)` - Listar camaras del Vision Service
-- **Paginas con Edge Computing**:
-  - `/dashboard/settings` - Configurar vision_service_url por condominio
-  - `/dashboard/cameras` - Banner de estado, usa Vision Service si disponible
+- **Streaming Integration** (`apps/dashboard/src/hooks/useGoRTCStream.ts`):
+  - Hook WebRTC para conexion a go2rtc
+  - Auto-connect/disconnect lifecycle
+  - Snapshot desde video stream
+- **Paginas principales**:
+  - `/dashboard/settings` - Configurar vision_service_url y go2rtc_url por condominio
+  - `/dashboard/cameras` - Lista y estado de camaras, snapshots
+  - `/dashboard/cameras/live` - Video en vivo via WebRTC (matrix view)
 
 ## Arquitectura Multi-Tenant (Actualizada)
 
@@ -183,9 +216,14 @@ agente_portero/
          │         │    ON-PREMISE (FreePBX)     │
          │         │    172.20.20.1              │
     ┌────▼────┐ ┌──▼────────┐  ┌─────────────────▼──────────────┐
-    │Asterisk │ │ Evolution │  │      Vision Service (:8001)    │
+    │Asterisk │ │ Evolution │  │      Vision Service (:8002)    │
     │ FreePBX │ │    API    │  │   YOLO + OCR + Hikvision ISAPI │
     └─────────┘ └───────────┘  └─────────────────┬──────────────┘
+                                                 │
+                               ┌─────────────────▼──────────────┐
+                               │      go2rtc (:1984)            │
+                               │   RTSP → WebRTC streaming      │
+                               └─────────────────┬──────────────┘
                                                  │ Red local
                                           ┌──────▼──────┐
                                           │  Hikvision  │
@@ -197,7 +235,8 @@ FLUJOS PRINCIPALES:
 1. Visitante llama → Voice Service → Backend → Decision
 2. Residente WhatsApp → WhatsApp Service → Backend → Action
 3. Dashboard → Vision Service (directo) → Snapshot/Test camara
-4. Cámara detecta placa → Vision Service → Backend → Auto-open
+4. Dashboard → go2rtc (WebRTC) → Video en vivo <1s latencia
+5. Cámara detecta placa → Vision Service → Backend → Auto-open
 ```
 
 ## Flujos Principales
@@ -345,6 +384,48 @@ NO → Banner rojo "Vision Service Offline"
 BENEFICIO: Latencia ~50ms (local) vs ~500ms (cloud roundtrip)
 ```
 
+### 5️⃣ Flujo: Video Streaming en Vivo (go2rtc WebRTC)
+
+```
+CONFIGURACION:
+────────────────
+Admin → Dashboard > Settings > Streaming
+        ↓
+Ingresa URL: http://integrateccr.ddns.net:1984
+        ↓
+Guardar en condominium.settings.go2rtc_url
+
+
+USO EN DASHBOARD:
+────────────────
+Usuario → Dashboard > Cameras > Live
+        ↓
+Dashboard carga streams disponibles de go2rtc
+        ↓
+Por cada camara:
+  1. Browser crea RTCPeerConnection
+  2. WebSocket a go2rtc: ws://host:1984/api/ws?src=entrada_main
+  3. Intercambio SDP offer/answer
+  4. ICE candidates para NAT traversal
+  5. Video stream directo: RTSP → go2rtc → WebRTC → Browser
+        ↓
+Resultado: Video en vivo con <1 segundo de latencia
+
+LAYOUTS DISPONIBLES:
+  - Single: 1 camara a pantalla completa
+  - 2x2: Grid de 4 camaras
+  - 3x3: Grid de 9 camaras
+  - 4x4: Grid de 16 camaras
+
+CONTROLES POR STREAM:
+  - Mute/Unmute audio
+  - Tomar snapshot (captura frame actual)
+  - Pantalla completa
+  - Reconectar si pierde conexion
+
+BENEFICIO: Latencia <1s (WebRTC) vs 5-10s (HLS/DASH)
+```
+
 ## Comandos de Desarrollo
 
 ### Backend
@@ -383,6 +464,23 @@ curl http://localhost:8001/health
 ```bash
 cd services/vision-service
 docker-compose up -d
+```
+
+### Streaming Service (go2rtc - Edge Computing)
+```bash
+# Deployment en FreePBX (on-premise)
+ssh root@172.20.20.1
+cd /opt/agente-portero/services/streaming
+docker-compose up -d
+
+# Ver logs
+docker logs -f go2rtc
+
+# Verificar streams
+curl http://localhost:1984/api/streams
+
+# Test WebRTC desde navegador
+# Abrir http://172.20.20.1:1984 → Panel de go2rtc
 ```
 
 ### Dashboard
@@ -480,6 +578,28 @@ BACKEND_API_URL=https://api-portero.integratec-ia.com
 
 > **Nota**: Ver `services/vision-service/.env.freepbx` para template completo
 
+### Streaming Service (go2rtc.yaml)
+```yaml
+streams:
+  entrada_main:
+    - "rtsp://{USER}:{PASS}@{HOST}:554/Streaming/Channels/101"
+  entrada_sub:
+    - "rtsp://{USER}:{PASS}@{HOST}:554/Streaming/Channels/102"
+
+api:
+  listen: ":1984"
+  origin: "*"
+
+webrtc:
+  listen: ":8555/tcp"
+  candidates:
+    - "172.20.20.1:8555"            # IP local FreePBX
+    - "integrateccr.ddns.net:8555"  # IP publica (NAT)
+    - "stun:stun.l.google.com:19302"
+```
+
+> **Nota**: Ver `services/streaming/README.md` para configuracion completa
+
 ### WhatsApp Service (.env)
 ```env
 # Evolution API Externa
@@ -503,6 +623,7 @@ REDIS_URL=redis://localhost:6379/0
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_GO2RTC_URL=http://localhost:1984  # go2rtc streaming (opcional)
 ```
 
 ## Testing Strategy
