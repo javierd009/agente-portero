@@ -16,7 +16,7 @@ Servicio de procesamiento de video que corre **on-premise** en el servidor FreeP
                                                    │
     ON-PREMISE (FreePBX 172.20.20.1)               │
     ┌───────────────────────────────────────────────▼──────────────────┐
-    │                    Vision Service (:8001)                         │
+    │                    Vision Service (:8002)                         │
     │                                                                   │
     │   • Test conexion de camaras                                      │
     │   • Captura de snapshots                                          │
@@ -121,13 +121,13 @@ docker ps | grep portero-vision
 docker logs portero-vision
 
 # Probar health endpoint
-curl http://localhost:8001/health
+curl http://localhost:8002/health
 
 # Probar conexion a camara
-curl -X POST "http://localhost:8001/cameras/test?host=172.20.22.111&port=80&username=admin&password=integratec20"
+curl -X POST "http://localhost:8002/cameras/test?host=172.20.22.111&port=80&username=admin&password=integratec20"
 
 # Obtener snapshot
-curl http://localhost:8001/cameras/1/snapshot/base64
+curl http://localhost:8002/cameras/1/snapshot/base64
 ```
 
 ### Paso 7: Configurar NAT en Mikrotik
@@ -139,16 +139,16 @@ Para que el dashboard pueda acceder al Vision Service desde internet:
 3. Agregar regla:
    - Chain: dstnat
    - Protocol: TCP
-   - Dst. Port: 8001
+   - Dst. Port: 8002
    - Action: dst-nat
    - To Addresses: 172.20.20.1
-   - To Ports: 8001
+   - To Ports: 8002
 
 ### Paso 8: Configurar en Dashboard
 
 1. Ir a **Dashboard > Configuracion**
 2. En la seccion "Vision Service (Edge Computing)":
-   - URL: `http://integrateccr.ddns.net:8001`
+   - URL: `http://integrateccr.ddns.net:8002`
 3. Click "Probar Conexion"
 4. Si sale verde, click "Guardar"
 
@@ -187,7 +187,7 @@ docker stats portero-vision
 ### Ejemplo: Probar Camara
 
 ```bash
-curl -X POST "http://localhost:8001/cameras/test" \
+curl -X POST "http://localhost:8002/cameras/test" \
   -H "Content-Type: application/json" \
   -d '{"host": "172.20.22.111", "port": 80, "username": "admin", "password": "integratec20"}'
 ```
@@ -213,8 +213,8 @@ Respuesta:
 # Ver logs de error
 docker logs portero-vision
 
-# Verificar que el puerto 8001 este libre
-netstat -tlnp | grep 8001
+# Verificar que el puerto 8002 este libre
+netstat -tlnp | grep 8002
 
 # Reiniciar Docker
 systemctl restart docker
@@ -236,8 +236,8 @@ cat .env | grep HIKVISION
 ### Dashboard no conecta al Vision Service
 
 1. Verificar NAT en Mikrotik
-2. Probar desde internet: `curl http://integrateccr.ddns.net:8001/health`
-3. Verificar firewall en FreePBX: `iptables -L -n | grep 8001`
+2. Probar desde internet: `curl http://integrateccr.ddns.net:8002/health`
+3. Verificar firewall en FreePBX: `iptables -L -n | grep 8002`
 
 ## Estructura de Archivos
 
