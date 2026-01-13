@@ -26,6 +26,76 @@ def get_tenant_id(x_tenant_id: UUID = Header(..., description="Tenant/Condominiu
     return x_tenant_id
 
 
+# ==========================================
+# Vision Service Proxy Endpoints (MUST be before /{camera_id} routes)
+# These allow the dashboard to communicate with the vision-service
+# through the backend, avoiding HTTPS/HTTP mixed content issues
+# ==========================================
+
+@router.get("/vision-service/health")
+async def vision_service_health(
+    vision_url: str,
+):
+    """Proxy health check to vision-service (avoids mixed content)"""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(f"{vision_url}/health")
+            if response.status_code == 200:
+                return response.json()
+            return {"status": "error", "code": response.status_code}
+    except httpx.ConnectError:
+        return {"status": "offline", "error": "Cannot connect to vision service"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.post("/vision-service/test-camera")
+async def vision_service_test_camera(
+    vision_url: str,
+    host: str,
+    port: int = 80,
+    username: str = "admin",
+    password: str = "",
+):
+    """Proxy camera test to vision-service"""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                f"{vision_url}/cameras/test",
+                params={
+                    "host": host,
+                    "port": port,
+                    "username": username,
+                    "password": password
+                }
+            )
+            return response.json()
+    except httpx.ConnectError:
+        return {"is_online": False, "error": "Cannot connect to vision service"}
+    except Exception as e:
+        return {"is_online": False, "error": str(e)}
+
+
+@router.get("/vision-service/snapshot")
+async def vision_service_snapshot(
+    vision_url: str,
+    channel_id: str = "1",
+):
+    """Proxy snapshot request to vision-service"""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(f"{vision_url}/cameras/{channel_id}/snapshot/base64")
+            return response.json()
+    except httpx.ConnectError:
+        return {"success": False, "error": "Cannot connect to vision service"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ==========================================
+# Camera CRUD Endpoints
+# ==========================================
+
 @router.get("/", response_model=List[CameraReadPublic])
 async def list_cameras(
     tenant_id: UUID = Depends(get_tenant_id),
@@ -282,69 +352,3 @@ async def get_camera_snapshot(
         raise HTTPException(status_code=500, detail=f"Failed to get snapshot: {str(e)}")
 
     raise HTTPException(status_code=500, detail="Failed to get snapshot from camera")
-
-
-# ==========================================
-# Vision Service Proxy Endpoints
-# These allow the dashboard to communicate with the vision-service
-# through the backend, avoiding HTTPS/HTTP mixed content issues
-# ==========================================
-
-@router.get("/vision-service/health")
-async def vision_service_health(
-    vision_url: str,
-):
-    """Proxy health check to vision-service (avoids mixed content)"""
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(f"{vision_url}/health")
-            if response.status_code == 200:
-                return response.json()
-            return {"status": "error", "code": response.status_code}
-    except httpx.ConnectError:
-        return {"status": "offline", "error": "Cannot connect to vision service"}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
-@router.post("/vision-service/test-camera")
-async def vision_service_test_camera(
-    vision_url: str,
-    host: str,
-    port: int = 80,
-    username: str = "admin",
-    password: str = "",
-):
-    """Proxy camera test to vision-service"""
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.post(
-                f"{vision_url}/cameras/test",
-                params={
-                    "host": host,
-                    "port": port,
-                    "username": username,
-                    "password": password
-                }
-            )
-            return response.json()
-    except httpx.ConnectError:
-        return {"is_online": False, "error": "Cannot connect to vision service"}
-    except Exception as e:
-        return {"is_online": False, "error": str(e)}
-
-
-@router.get("/vision-service/snapshot")
-async def vision_service_snapshot(
-    vision_url: str,
-    channel_id: str = "1",
-):
-    """Proxy snapshot request to vision-service"""
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(f"{vision_url}/cameras/{channel_id}/snapshot/base64")
-            return response.json()
-    except httpx.ConnectError:
-        return {"success": False, "error": "Cannot connect to vision service"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
