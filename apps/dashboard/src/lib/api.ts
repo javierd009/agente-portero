@@ -450,6 +450,7 @@ export interface CameraSnapshot {
 export interface CondominiumSettings {
   vision_service_url?: string
   voice_service_url?: string
+  go2rtc_url?: string
   hikvision?: {
     host?: string
     port?: number

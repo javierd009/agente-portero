@@ -1,0 +1,57 @@
+# go2rtc Streaming Service para Agente Portero
+# Convierte RTSP → WebRTC para visualización en dashboard
+#
+# Deploy: FreePBX (on-premise) para acceso directo a cámaras locales
+#
+# Uso:
+#   docker-compose up -d
+#   Web UI: http://172.20.20.1:1984
+#   WebRTC: ws://172.20.20.1:8555
+
+version: '3.9'
+
+services:
+  go2rtc:
+    image: alexxit/go2rtc:latest
+    container_name: portero-streaming
+    restart: unless-stopped
+
+    ports:
+      # Web UI + API
+      - "1984:1984"
+      # WebRTC
+      - "8555:8555/tcp"
+      - "8555:8555/udp"
+      # RTSP (opcional, para re-streaming)
+      - "8554:8554"
+
+    environment:
+      # Credenciales de cámara Hikvision
+      - HIKVISION_HOST=${HIKVISION_HOST:-172.20.22.111}
+      - HIKVISION_USER=${HIKVISION_USER:-admin}
+      - HIKVISION_PASSWORD=${HIKVISION_PASSWORD:-}
+      # Timezone
+      - TZ=America/Costa_Rica
+
+    volumes:
+      # Configuración
+      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:1984/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Network mode: host para mejor rendimiento de WebRTC
+    # Alternativa: usar network_mode: bridge con los puertos mapeados
+    # network_mode: host

@@ -32,7 +32,9 @@ import {
   Eye,
   Cpu,
   AlertCircle,
+  Video,
 } from 'lucide-react'
+import Link from 'next/link'
 
 export default function CamerasPage() {
   const { currentTenant } = useTenantStore()
@@ -315,13 +317,20 @@ export default function CamerasPage() {
             Gestion y visualizacion de camaras Hikvision
           </p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Agregar Cámara
+        <div className="flex gap-2">
+          <Link href="/dashboard/cameras/live">
+            <Button variant="outline">
+              <Video className="h-4 w-4 mr-2" />
+              Video en Vivo
             </Button>
-          </DialogTrigger>
+          </Link>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar Cámara
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Agregar Nueva Cámara</DialogTitle>
@@ -408,7 +417,8 @@ export default function CamerasPage() {
               </DialogFooter>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
 
         {/* Edit Camera Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
