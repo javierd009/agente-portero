@@ -34,7 +34,7 @@ vision AI (YOLO+OCR+Facial), y ofrece dashboard web multi-tenant.
 | Servicio | URL Externa | Destino Interno |
 |----------|-------------|-----------------|
 | Asterisk ARI | integrateccr.ddns.net:8880 | 172.20.20.1:8088 |
-| Vision Service | integrateccr.ddns.net:8001 | 172.20.20.1:8001 |
+| Vision Service | integrateccr.ddns.net:8002 | 172.20.20.1:8002 |
 | Mikrotik WebFig | integrateccr.ddns.net:90 | Router admin |
 
 ### FreePBX/Asterisk
@@ -125,8 +125,8 @@ agente_portero/
 - **Impact**: Reduce llamadas de voz en 40-50%
 
 ### Vision Service (Edge Computing)
-- **Ubicacion**: On-premise en FreePBX (172.20.20.1:8001)
-- **Acceso Externo**: integrateccr.ddns.net:8001 (NAT)
+- **Ubicacion**: On-premise en FreePBX (172.20.20.1:8002)
+- **Acceso Externo**: integrateccr.ddns.net:8002 (NAT)
 - **Detection**: YOLOv8/v10
 - **OCR**: PaddleOCR
 - **Camera**: Hikvision ISAPI (172.20.22.111)
@@ -320,7 +320,7 @@ CONFIGURACION:
 ────────────────
 Admin → Dashboard > Settings > Vision Service
         ↓
-Ingresa URL: http://integrateccr.ddns.net:8001
+Ingresa URL: http://integrateccr.ddns.net:8002
         ↓
 Click "Probar Conexion" → visionService.healthCheck()
         ↓

@@ -28,12 +28,12 @@ RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
 # Copy application code
 COPY . .
 
-# Expose port
-EXPOSE 8001
+# Expose port (configurable via SERVICE_PORT env var, default 8002)
+EXPOSE 8002
 
-# Health check
+# Health check uses SERVICE_PORT from environment
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
+    CMD curl -f http://localhost:${SERVICE_PORT:-8002}/health || exit 1
 
 # Run the service
 CMD ["python", "main.py"]
