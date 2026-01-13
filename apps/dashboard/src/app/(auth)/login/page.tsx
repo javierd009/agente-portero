@@ -31,8 +31,8 @@ export default function LoginPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      router.push('/dashboard')
-      router.refresh()
+      // Use window.location for full page reload to ensure cookies are sent
+      window.location.href = '/dashboard'
     }
   }
 
