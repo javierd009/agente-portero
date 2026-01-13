@@ -164,36 +164,48 @@ export const apiClient = {
     }),
 }
 
-// Vision Service - Direct calls for edge computing (lower latency)
+// Vision Service - Calls go through backend proxy to avoid HTTPS/HTTP mixed content issues
 export const visionService = {
-  // Test camera connection directly via vision-service
+  // Test camera connection via vision-service (through backend proxy)
   testCamera: async (visionServiceUrl: string, camera: { host: string; port: number; username: string; password: string }) => {
     const params = new URLSearchParams({
+      vision_url: visionServiceUrl,
       host: camera.host,
       port: camera.port.toString(),
       username: camera.username,
       password: camera.password,
     })
-    const response = await fetch(`${visionServiceUrl}/cameras/test?${params}`, {
+    const response = await fetch(`${API_URL}/api/v1/cameras/vision-service/test-camera?${params}`, {
       method: 'POST',
     })
     return response.json() as Promise<VisionTestResult>
   },
 
-  // Get snapshot directly via vision-service
+  // Get snapshot via vision-service (through backend proxy)
   getSnapshot: async (visionServiceUrl: string, channelId: string = '1') => {
-    const response = await fetch(`${visionServiceUrl}/cameras/${channelId}/snapshot/base64`)
+    const params = new URLSearchParams({
+      vision_url: visionServiceUrl,
+      channel_id: channelId,
+    })
+    const response = await fetch(`${API_URL}/api/v1/cameras/vision-service/snapshot?${params}`)
     return response.json() as Promise<VisionSnapshotResult>
   },
 
-  // Health check
+  // Health check (through backend proxy to avoid mixed content)
   healthCheck: async (visionServiceUrl: string) => {
     try {
-      const response = await fetch(`${visionServiceUrl}/health`, {
-        signal: AbortSignal.timeout(5000)
+      const params = new URLSearchParams({ vision_url: visionServiceUrl })
+      const response = await fetch(`${API_URL}/api/v1/cameras/vision-service/health?${params}`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(10000),
       })
-      return response.ok
-    } catch {
+      if (response.ok) {
+        const data = await response.json()
+        return data.status === 'healthy'
+      }
+      return false
+    } catch (error) {
+      console.error('Vision Service health check failed:', error)
       return false
     }
   },
