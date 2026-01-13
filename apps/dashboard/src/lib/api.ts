@@ -152,6 +152,57 @@ export const apiClient = {
 
   getCameraSnapshot: (tenantId: string, cameraId: string) =>
     api<CameraSnapshot>(`/api/v1/cameras/${cameraId}/snapshot`, { tenantId }),
+
+  // Condominiums
+  getCondominium: (condominiumId: string) =>
+    api<Condominium>(`/api/v1/condominiums/${condominiumId}`),
+
+  updateCondominium: (condominiumId: string, data: CondominiumUpdate) =>
+    api<Condominium>(`/api/v1/condominiums/${condominiumId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+}
+
+// Vision Service - Direct calls for edge computing (lower latency)
+export const visionService = {
+  // Test camera connection directly via vision-service
+  testCamera: async (visionServiceUrl: string, camera: { host: string; port: number; username: string; password: string }) => {
+    const params = new URLSearchParams({
+      host: camera.host,
+      port: camera.port.toString(),
+      username: camera.username,
+      password: camera.password,
+    })
+    const response = await fetch(`${visionServiceUrl}/cameras/test?${params}`, {
+      method: 'POST',
+    })
+    return response.json() as Promise<VisionTestResult>
+  },
+
+  // Get snapshot directly via vision-service
+  getSnapshot: async (visionServiceUrl: string, channelId: string = '1') => {
+    const response = await fetch(`${visionServiceUrl}/cameras/${channelId}/snapshot/base64`)
+    return response.json() as Promise<VisionSnapshotResult>
+  },
+
+  // Health check
+  healthCheck: async (visionServiceUrl: string) => {
+    try {
+      const response = await fetch(`${visionServiceUrl}/health`, {
+        signal: AbortSignal.timeout(5000)
+      })
+      return response.ok
+    } catch {
+      return false
+    }
+  },
+
+  // List cameras from vision-service
+  listCameras: async (visionServiceUrl: string) => {
+    const response = await fetch(`${visionServiceUrl}/cameras`)
+    return response.json() as Promise<{ cameras: VisionCamera[] }>
+  },
 }
 
 // Types
@@ -381,4 +432,62 @@ export interface CameraSnapshot {
   camera_id: string
   image: string  // base64 data URL
   timestamp: string
+}
+
+// Condominium types
+export interface CondominiumSettings {
+  vision_service_url?: string
+  voice_service_url?: string
+  hikvision?: {
+    host?: string
+    port?: number
+    username?: string
+  }
+}
+
+export interface Condominium {
+  id: string
+  name: string
+  slug: string
+  address: string | null
+  timezone: string
+  settings: CondominiumSettings
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CondominiumUpdate {
+  name?: string
+  address?: string
+  timezone?: string
+  settings?: CondominiumSettings
+  is_active?: boolean
+}
+
+// Vision Service types (edge computing)
+export interface VisionTestResult {
+  host: string
+  port: number
+  is_online: boolean
+  device_info: {
+    name?: string
+    model?: string
+    serial?: string
+    firmware?: string
+  } | null
+  error: string | null
+}
+
+export interface VisionSnapshotResult {
+  camera_id: string
+  image: string  // base64 data URL
+  success: boolean
+  error?: string
+}
+
+export interface VisionCamera {
+  id: string
+  name: string
+  enabled: boolean
 }

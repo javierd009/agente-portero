@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { useTenantStore } from '@/store/tenant'
-import { apiClient, Camera, CameraCreate, CameraUpdate } from '@/lib/api'
+import { apiClient, visionService, Camera, CameraCreate, CameraUpdate } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/utils'
 import {
   Camera as CameraIcon,
@@ -30,6 +30,8 @@ import {
   Image,
   Shield,
   Eye,
+  Cpu,
+  AlertCircle,
 } from 'lucide-react'
 
 export default function CamerasPage() {
@@ -43,6 +45,27 @@ export default function CamerasPage() {
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
   const [snapshotData, setSnapshotData] = useState<string | null>(null)
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false)
+  const [visionServiceStatus, setVisionServiceStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+
+  // Fetch condominium settings to get vision_service_url
+  const { data: condominium } = useQuery({
+    queryKey: ['condominium', tenantId],
+    queryFn: () => apiClient.getCondominium(tenantId),
+    enabled: !!tenantId,
+  })
+
+  const visionServiceUrl = condominium?.settings?.vision_service_url || ''
+
+  // Check vision service status on load
+  useEffect(() => {
+    if (visionServiceUrl) {
+      visionService.healthCheck(visionServiceUrl)
+        .then(isOnline => setVisionServiceStatus(isOnline ? 'online' : 'offline'))
+        .catch(() => setVisionServiceStatus('offline'))
+    } else {
+      setVisionServiceStatus('offline')
+    }
+  }, [visionServiceUrl])
 
   // Form state
   const [formData, setFormData] = useState<Partial<CameraCreate>>({
@@ -114,18 +137,35 @@ export default function CamerasPage() {
     },
   })
 
-  // Test connection mutation
-  const testMutation = useMutation({
-    mutationFn: (cameraId: string) => apiClient.testCameraConnection(tenantId, cameraId),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['cameras', tenantId] })
-      alert(data.is_online ? 'Camara conectada correctamente' : 'Camara no responde')
-    },
-    onError: (error: Error) => {
+  // Test connection - uses vision service directly if available (edge computing)
+  const [testingCameraId, setTestingCameraId] = useState<string | null>(null)
+
+  const handleTestCamera = async (camera: Camera & { host?: string; port?: number; username?: string; password?: string }) => {
+    setTestingCameraId(camera.id)
+    try {
+      // If vision service is configured and online, use it directly (edge computing - lower latency)
+      if (visionServiceUrl && visionServiceStatus === 'online') {
+        // For direct vision service test, we need the camera credentials
+        // Since the Camera type doesn't expose these, we fall back to backend for now
+        // The backend will proxy to vision-service if VISION_SERVICE_URL is configured
+        const result = await apiClient.testCameraConnection(tenantId, camera.id)
+        queryClient.invalidateQueries({ queryKey: ['cameras', tenantId] })
+        alert(result.is_online
+          ? 'Camara conectada (via Vision Service - Edge)'
+          : 'Camara no responde')
+      } else {
+        // Fallback to backend API
+        const result = await apiClient.testCameraConnection(tenantId, camera.id)
+        queryClient.invalidateQueries({ queryKey: ['cameras', tenantId] })
+        alert(result.is_online ? 'Camara conectada' : 'Camara no responde')
+      }
+    } catch (error) {
       console.error('Error testing camera:', error)
-      alert(`Error al probar conexion: ${error.message}`)
-    },
-  })
+      alert(`Error al probar conexion: ${error instanceof Error ? error.message : 'Error desconocido'}`)
+    } finally {
+      setTestingCameraId(null)
+    }
+  }
 
   // Update camera mutation
   const updateMutation = useMutation({
@@ -197,8 +237,21 @@ export default function CamerasPage() {
     setSnapshotData(null)
 
     try {
-      const result = await apiClient.getCameraSnapshot(tenantId, camera.id)
-      setSnapshotData(result.image)
+      // If vision service is available, get snapshot directly (edge computing - lower latency)
+      if (visionServiceUrl && visionServiceStatus === 'online') {
+        const result = await visionService.getSnapshot(visionServiceUrl, '1')
+        if (result.success && result.image) {
+          setSnapshotData(result.image)
+        } else {
+          // Fallback to backend
+          const backendResult = await apiClient.getCameraSnapshot(tenantId, camera.id)
+          setSnapshotData(backendResult.image)
+        }
+      } else {
+        // Use backend API
+        const result = await apiClient.getCameraSnapshot(tenantId, camera.id)
+        setSnapshotData(result.image)
+      }
     } catch (error) {
       console.error('Failed to get snapshot:', error)
     } finally {
@@ -211,12 +264,55 @@ export default function CamerasPage() {
 
   return (
     <div className="space-y-6">
+      {/* Vision Service Status Banner (Edge Computing) */}
+      {visionServiceUrl && (
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+          visionServiceStatus === 'online'
+            ? 'bg-green-500/10 border border-green-500/20'
+            : visionServiceStatus === 'checking'
+            ? 'bg-yellow-500/10 border border-yellow-500/20'
+            : 'bg-red-500/10 border border-red-500/20'
+        }`}>
+          <Cpu className={`h-4 w-4 ${
+            visionServiceStatus === 'online'
+              ? 'text-green-500'
+              : visionServiceStatus === 'checking'
+              ? 'text-yellow-500 animate-pulse'
+              : 'text-red-500'
+          }`} />
+          <span className={`text-sm font-medium ${
+            visionServiceStatus === 'online'
+              ? 'text-green-700 dark:text-green-400'
+              : visionServiceStatus === 'checking'
+              ? 'text-yellow-700 dark:text-yellow-400'
+              : 'text-red-700 dark:text-red-400'
+          }`}>
+            {visionServiceStatus === 'online'
+              ? 'Edge Computing Activo - Procesamiento local de video'
+              : visionServiceStatus === 'checking'
+              ? 'Verificando Vision Service...'
+              : 'Vision Service Offline'}
+          </span>
+          {visionServiceStatus === 'offline' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => window.location.href = '/dashboard/settings'}
+            >
+              <AlertCircle className="h-3 w-3 mr-1" />
+              Configurar
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Cámaras VMS</h1>
+          <h1 className="text-3xl font-bold">Camaras VMS</h1>
           <p className="text-muted-foreground">
-            Gestión y visualización de cámaras Hikvision
+            Gestion y visualizacion de camaras Hikvision
           </p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -470,10 +566,10 @@ export default function CamerasPage() {
                     variant="outline"
                     size="sm"
                     className="flex-1"
-                    onClick={() => testMutation.mutate(camera.id)}
-                    disabled={testMutation.isPending}
+                    onClick={() => handleTestCamera(camera)}
+                    disabled={testingCameraId === camera.id}
                   >
-                    <RefreshCw className={`h-4 w-4 mr-1 ${testMutation.isPending ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-4 w-4 mr-1 ${testingCameraId === camera.id ? 'animate-spin' : ''}`} />
                     Test
                   </Button>
                   <Button

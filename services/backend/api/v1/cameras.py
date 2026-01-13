@@ -1,4 +1,6 @@
 """Cameras API - Camera management and VMS functionality"""
+import os
+import logging
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -11,6 +13,12 @@ from infrastructure.database import get_session
 from domain.models.camera import Camera, CameraCreate, CameraRead, CameraReadPublic, CameraUpdate
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Vision service URL for proxying camera requests (on-premise)
+# When set, camera test/snapshot requests will go through vision-service
+# Example: http://integrateccr.ddns.net:8001
+VISION_SERVICE_URL = os.getenv("VISION_SERVICE_URL", "")
 
 
 def get_tenant_id(x_tenant_id: UUID = Header(..., description="Tenant/Condominium ID")) -> UUID:
@@ -160,16 +168,44 @@ async def test_camera_connection(
     device_info = None
 
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            if camera.camera_type == "hikvision":
-                url = f"http://{camera.host}:{camera.port}/ISAPI/System/deviceInfo"
-                response = await client.get(
-                    url,
-                    auth=httpx.DigestAuth(camera.username, camera.password)
+        async with httpx.AsyncClient(timeout=15) as client:
+            # If vision service is configured, proxy the request through it
+            # (vision-service runs on-premise and can reach local cameras)
+            if VISION_SERVICE_URL:
+                logger.info(f"Testing camera via vision-service: {VISION_SERVICE_URL}")
+                response = await client.post(
+                    f"{VISION_SERVICE_URL}/cameras/test",
+                    params={
+                        "host": camera.host,
+                        "port": camera.port,
+                        "username": camera.username,
+                        "password": camera.password
+                    }
                 )
-                is_online = response.status_code == 200
-                if is_online:
-                    device_info = {"status": "connected", "raw": response.text[:500]}
+                if response.status_code == 200:
+                    data = response.json()
+                    is_online = data.get("is_online", False)
+                    device_info = data.get("device_info") or {"status": "connected via vision-service"}
+                    if data.get("error"):
+                        device_info = {"status": "error", "error": data["error"]}
+                else:
+                    device_info = {"status": "error", "error": f"Vision service error: {response.status_code}"}
+            else:
+                # Direct connection (only works when backend and camera are on same network)
+                if camera.camera_type == "hikvision":
+                    url = f"http://{camera.host}:{camera.port}/ISAPI/System/deviceInfo"
+                    response = await client.get(
+                        url,
+                        auth=httpx.DigestAuth(camera.username, camera.password)
+                    )
+                    is_online = response.status_code == 200
+                    if is_online:
+                        device_info = {"status": "connected", "raw": response.text[:500]}
+    except httpx.ConnectError as e:
+        if VISION_SERVICE_URL:
+            device_info = {"status": "error", "error": f"Cannot connect to vision-service at {VISION_SERVICE_URL}"}
+        else:
+            device_info = {"status": "error", "error": f"Cannot connect to camera: {str(e)}"}
     except Exception as e:
         device_info = {"status": "error", "error": str(e)}
 
@@ -206,21 +242,42 @@ async def get_camera_snapshot(
         raise HTTPException(status_code=404, detail="Camera not found")
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            if camera.camera_type == "hikvision":
-                url = f"http://{camera.host}:{camera.port}/ISAPI/Streaming/channels/101/picture"
-                response = await client.get(
-                    url,
-                    auth=httpx.DigestAuth(camera.username, camera.password)
-                )
+        async with httpx.AsyncClient(timeout=15) as client:
+            # If vision service is configured, proxy through it
+            if VISION_SERVICE_URL:
+                logger.info(f"Getting snapshot via vision-service: {VISION_SERVICE_URL}")
+                # Vision service uses channel ID "1" for main stream
+                response = await client.get(f"{VISION_SERVICE_URL}/cameras/1/snapshot/base64")
                 if response.status_code == 200:
-                    import base64
-                    image_data = base64.b64encode(response.content).decode()
-                    return {
-                        "camera_id": str(camera_id),
-                        "image": f"data:image/jpeg;base64,{image_data}",
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
+                    data = response.json()
+                    if data.get("success") and data.get("image"):
+                        return {
+                            "camera_id": str(camera_id),
+                            "image": data["image"],
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    else:
+                        raise HTTPException(status_code=500, detail=data.get("error", "Failed to get snapshot"))
+                else:
+                    raise HTTPException(status_code=500, detail=f"Vision service error: {response.status_code}")
+            else:
+                # Direct connection
+                if camera.camera_type == "hikvision":
+                    url = f"http://{camera.host}:{camera.port}/ISAPI/Streaming/channels/101/picture"
+                    response = await client.get(
+                        url,
+                        auth=httpx.DigestAuth(camera.username, camera.password)
+                    )
+                    if response.status_code == 200:
+                        import base64
+                        image_data = base64.b64encode(response.content).decode()
+                        return {
+                            "camera_id": str(camera_id),
+                            "image": f"data:image/jpeg;base64,{image_data}",
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get snapshot: {str(e)}")
 

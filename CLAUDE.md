@@ -34,6 +34,7 @@ vision AI (YOLO+OCR+Facial), y ofrece dashboard web multi-tenant.
 | Servicio | URL Externa | Destino Interno |
 |----------|-------------|-----------------|
 | Asterisk ARI | integrateccr.ddns.net:8880 | 172.20.20.1:8088 |
+| Vision Service | integrateccr.ddns.net:8001 | 172.20.20.1:8001 |
 | Mikrotik WebFig | integrateccr.ddns.net:90 | Router admin |
 
 ### FreePBX/Asterisk
@@ -71,6 +72,7 @@ agente_portero/
 | `docs/OPENAI_REALTIME_FREEPBX_INTEGRATION.md` | Guia completa de integracion OpenAI Realtime + Asterisk AudioSocket |
 | `docs/VOICE_AUDIO_FIX.md` | Historial de fixes de audio en Voice Service |
 | `services/voice-service/README.md` | Documentacion del Voice Service |
+| `services/vision-service/README.md` | Guia de deployment Edge Computing en FreePBX |
 
 ### Backend (FastAPI)
 - **Runtime**: Python 3.11
@@ -122,17 +124,40 @@ agente_portero/
   - Personalidad: Profesional, amigable, consciente de seguridad
 - **Impact**: Reduce llamadas de voz en 40-50%
 
-### Vision Service (Edge)
+### Vision Service (Edge Computing)
+- **Ubicacion**: On-premise en FreePBX (172.20.20.1:8001)
+- **Acceso Externo**: integrateccr.ddns.net:8001 (NAT)
 - **Detection**: YOLOv8/v10
 - **OCR**: PaddleOCR
-- **Camera**: Hikvision ISAPI
-- **Runtime**: Docker + CUDA
+- **Camera**: Hikvision ISAPI (172.20.22.111)
+- **Runtime**: Docker (sin CUDA en FreePBX)
+- **Beneficios Edge Computing**:
+  - Baja latencia: Video procesado localmente sin salir a internet
+  - Menor ancho de banda: Solo resultados viajan a la nube
+  - Acceso directo a camaras sin NAT/firewall issues
+  - Funciona aunque internet falle temporalmente
+- **API Endpoints**:
+  - `GET /health` - Health check
+  - `POST /cameras/test` - Probar conexion a camara
+  - `GET /cameras/{id}/snapshot/base64` - Captura en base64
+  - `POST /detect` - Deteccion YOLO
+- **Dashboard Integration**: Configuracion en Settings > Vision Service (Edge Computing)
+
+> **Deployment Manual**: Ver `services/vision-service/README.md` para guia paso a paso de instalacion en FreePBX
 
 ### Dashboard (Next.js)
 - **Framework**: Next.js 16 (App Router)
 - **Styling**: Tailwind CSS + shadcn/ui
 - **State**: Zustand + TanStack Query
 - **Auth**: Supabase Auth
+- **Edge Computing Integration** (`apps/dashboard/src/lib/api.ts`):
+  - `visionService.healthCheck(url)` - Verificar conexion al Vision Service
+  - `visionService.testCamera(url, credentials)` - Probar camara via edge
+  - `visionService.getSnapshot(url, channelId)` - Obtener captura en base64
+  - `visionService.listCameras(url)` - Listar camaras del Vision Service
+- **Paginas con Edge Computing**:
+  - `/dashboard/settings` - Configurar vision_service_url por condominio
+  - `/dashboard/cameras` - Banner de estado, usa Vision Service si disponible
 
 ## Arquitectura Multi-Tenant (Actualizada)
 
@@ -140,31 +165,39 @@ agente_portero/
 ┌──────────────────────────────────────────────────────────────┐
 │                      Dashboard (Next.js)                      │
 │   Gestión multi-condominio, analytics, configuración         │
-└─────────────────────────────┬────────────────────────────────┘
-                              │ REST API + WebSocket
-┌─────────────────────────────▼────────────────────────────────┐
-│                    Backend (FastAPI)                          │
-│  Orchestrator central: autorizaciones, audit, multi-tenant   │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────┐    │
-│  │ Visitor │  │ Access  │  │  Gate   │  │   Reports   │    │
-│  │ Manager │  │ Control │  │ Control │  │   System    │    │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────────┘    │
-└────────┬──────────┬──────────┬──────────┬──────────┬─────────┘
-         │          │          │          │          │
-    ┌────▼────┐ ┌──▼────┐ ┌───▼──────┐ ┌─▼───────┐ │
-    │ Voice   │ │WhatsApp│ │  Vision  │ │Supabase │ │
-    │ Service │ │Service │ │ Service  │ │   DB    │ │
-    └────┬────┘ └──┬─────┘ └────┬─────┘ └─────────┘ │
-         │         │            │                    │
-    ┌────▼────┐ ┌──▼────────┐ ┌▼─────────┐    ┌────▼─────┐
-    │Asterisk │ │ Evolution │ │Hikvision │    │  Redis   │
-    │ FreePBX │ │    API    │ │ Cameras  │    │  Cache   │
-    └─────────┘ └───────────┘ └──────────┘    └──────────┘
+└────────────────┬────────────────────────────┬────────────────┘
+                 │ REST API                    │ Llamadas directas
+                 │                             │ (Edge Computing)
+┌────────────────▼────────────────┐            │
+│         Backend (FastAPI)        │            │
+│  Orchestrator: auth, audit,      │            │
+│  multi-tenant, configuracion     │            │
+└────────┬──────────┬──────────┬───┘            │
+         │          │          │                │
+    ┌────▼────┐ ┌──▼────┐  ┌──▼────┐           │
+    │ Voice   │ │WhatsApp│  │Supabase│           │
+    │ Service │ │Service │  │  DB    │           │
+    └────┬────┘ └──┬─────┘  └────────┘           │
+         │         │                             │
+═════════╪═════════╪═════════════════════════════╪═══════════════
+         │         │    ON-PREMISE (FreePBX)     │
+         │         │    172.20.20.1              │
+    ┌────▼────┐ ┌──▼────────┐  ┌─────────────────▼──────────────┐
+    │Asterisk │ │ Evolution │  │      Vision Service (:8001)    │
+    │ FreePBX │ │    API    │  │   YOLO + OCR + Hikvision ISAPI │
+    └─────────┘ └───────────┘  └─────────────────┬──────────────┘
+                                                 │ Red local
+                                          ┌──────▼──────┐
+                                          │  Hikvision  │
+                                          │   Cameras   │
+                                          │172.20.22.111│
+                                          └─────────────┘
 
 FLUJOS PRINCIPALES:
 1. Visitante llama → Voice Service → Backend → Decision
 2. Residente WhatsApp → WhatsApp Service → Backend → Action
-3. Cámara detecta placa → Vision Service → Backend → Auto-open
+3. Dashboard → Vision Service (directo) → Snapshot/Test camara
+4. Cámara detecta placa → Vision Service → Backend → Auto-open
 ```
 
 ## Flujos Principales
@@ -280,6 +313,38 @@ NO → Activar llamada de voz + Vision continúa analizando
 COSTO: $0 (cache hit) + Vision processing (marginal)
 ```
 
+### 4️⃣ Flujo: Edge Computing (Dashboard → Vision Service)
+
+```
+CONFIGURACION:
+────────────────
+Admin → Dashboard > Settings > Vision Service
+        ↓
+Ingresa URL: http://integrateccr.ddns.net:8001
+        ↓
+Click "Probar Conexion" → visionService.healthCheck()
+        ↓
+Si OK (verde) → Guardar en condominium.settings.vision_service_url
+
+
+USO EN CAMARAS:
+────────────────
+Usuario → Dashboard > Camaras
+        ↓
+Dashboard verifica: condominium.settings.vision_service_url existe?
+        ↓
+SI → Banner verde "Edge Computing Activo"
+   → Llamadas van directo a Vision Service (menor latencia)
+   → Test camara: visionService.testCamera(url, credentials)
+   → Snapshot: visionService.getSnapshot(url, channelId)
+        ↓
+NO → Banner rojo "Vision Service Offline"
+   → Fallback a Backend API (mayor latencia)
+   → Link a Configuracion para setup
+
+BENEFICIO: Latencia ~50ms (local) vs ~500ms (cloud roundtrip)
+```
+
 ## Comandos de Desarrollo
 
 ### Backend
@@ -297,7 +362,24 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### Vision Service (Docker)
+### Vision Service (Edge Computing - FreePBX)
+```bash
+# Deployment en FreePBX (on-premise)
+ssh root@172.20.20.1
+cd /opt/agente-portero/services/vision-service
+./deploy-freepbx.sh
+
+# Ver logs
+docker logs -f portero-vision
+
+# Reiniciar
+docker-compose -f docker-compose.freepbx.yml restart
+
+# Test local
+curl http://localhost:8001/health
+```
+
+### Vision Service (Desarrollo local)
 ```bash
 cd services/vision-service
 docker-compose up -d
@@ -384,13 +466,19 @@ VAD_SILENCE_DURATION_MS=800
 DEFAULT_VOICE=shimmer               # alloy, shimmer, coral, sage, echo, ash, ballad, verse
 ```
 
-### Vision Service (.env)
+### Vision Service (.env) - Edge Computing en FreePBX
 ```env
-HIKVISION_HOST=192.168.1.100
+# Camara Hikvision (red local del condominio)
+HIKVISION_HOST=172.20.22.111
+HIKVISION_PORT=80
 HIKVISION_USER=admin
 HIKVISION_PASSWORD=xxx
-BACKEND_API_URL=http://localhost:8000
+
+# Backend (para reportar eventos)
+BACKEND_API_URL=https://api-portero.integratec-ia.com
 ```
+
+> **Nota**: Ver `services/vision-service/.env.freepbx` para template completo
 
 ### WhatsApp Service (.env)
 ```env
