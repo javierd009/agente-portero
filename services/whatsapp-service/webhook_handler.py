@@ -118,8 +118,33 @@ class WebhookHandler:
             if settings.ENABLE_REMOTE_GATE_OPEN:
                 fast_cmd = parse_fast_command(text)
                 if fast_cmd:
-                    await evolution_client.send_text(phone, "⏱️ Abriendo...")
-                    ok, msg = await execute_fast_open(fast_cmd.target)
+                    await evolution_client.send_text(phone, "Abriendo…")
+                    ok, msg, log_ctx = await execute_fast_open(fast_cmd.target)
+
+                    # Best-effort logging (do not block response)
+                    try:
+                        async with httpx.AsyncClient(timeout=2.0) as client:
+                            await client.post(
+                                f"{self.backend_url}/api/v1/audit/log-open",
+                                headers={
+                                    **self.backend_headers,
+                                    "x-tenant-id": resident["condominium_id"],
+                                },
+                                json={
+                                    "access_point": log_ctx.get("access_point"),
+                                    "success": bool(ok),
+                                    "actor_channel": "whatsapp",
+                                    "actor_phone": phone,
+                                    "message_id": message_id,
+                                    "resident_id": resident.get("id"),
+                                    "device_host": log_ctx.get("device_host"),
+                                    "door_id": log_ctx.get("door_id"),
+                                    "method": "fast_path_isapi",
+                                },
+                            )
+                    except Exception as e:
+                        logger.warn("fast_open_log_failed", error=str(e))
+
                     await evolution_client.send_text(phone, msg)
                     return
 

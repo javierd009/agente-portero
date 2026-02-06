@@ -25,6 +25,7 @@ from api.v1 import (
     qr,
     qr_landing,
     qr_ops,
+    audit,
 )
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -82,6 +83,9 @@ app.include_router(qr_landing.router, tags=["qr-public"])
 
 # QR ops (revoke/consume)
 app.include_router(qr_ops.router, prefix="/api/v1/qr", tags=["qr-ops"])
+
+# Audit / Bitácora (internal)
+app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
 
 @app.get("/health")
 async def health_check():

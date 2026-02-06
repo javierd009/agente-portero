@@ -13,6 +13,7 @@ from . import (
     qr,
     qr_landing,
     qr_ops,
+    audit,
 )
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "qr",
     "qr_landing",
     "qr_ops",
+    "audit",
 ]

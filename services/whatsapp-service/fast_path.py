@@ -57,17 +57,17 @@ def parse_fast_command(text: str) -> Optional[FastCommand]:
     return None
 
 
-async def execute_fast_open(target: DoorTarget) -> tuple[bool, str]:
+async def execute_fast_open(target: DoorTarget) -> tuple[bool, str, dict]:
     """Execute the open command using direct ISAPI calls.
 
-    Returns (success, message).
+    Returns (success, user_message, log_context).
     """
 
     cooldown_s = getattr(settings, "FAST_OPEN_COOLDOWN_SECONDS", 4)
     now = time.time()
     last = _last_open_ts.get(target)
     if last and (now - last) < cooldown_s:
-        return True, "✅ Listo (ya se estaba abriendo)"
+        return True, "Listo. Ya se estaba abriendo.", {"debounced": True}
 
     _last_open_ts[target] = now
 
@@ -76,20 +76,28 @@ async def execute_fast_open(target: DoorTarget) -> tuple[bool, str]:
         ip = settings.ACCESS_PANEL_IP
         door = 1
         xml_mode: Literal["strict", "legacy", "auto"] = "strict"
+        access_point = "vehicular_entry"
+        label = "Entrada"
     elif target == "vehicular_exit_panel":
         ip = settings.ACCESS_PANEL_IP
         door = 2
         xml_mode = "strict"
+        access_point = "vehicular_exit"
+        label = "Salida"
     elif target == "pedestrian_gate":
         ip = settings.PEDESTRIAN_DEVICE_IP
         door = 1
         xml_mode = "auto"
+        access_point = "pedestrian"
+        label = "Peatonal"
     elif target == "vehicular_entry_biometric":
         ip = settings.BIOMETRIC_ENTRY_IP
         door = 1
         xml_mode = "auto"
+        access_point = "vehicular_entry"
+        label = "Entrada (biométrico)"
     else:
-        return False, "❌ Puerta no configurada"
+        return False, "No configurado.", {"target": target}
 
     password = settings.HIK_PASS
     if target == "pedestrian_gate" and getattr(settings, "PEDESTRIAN_HIK_PASS", None):
@@ -105,9 +113,16 @@ async def execute_fast_open(target: DoorTarget) -> tuple[bool, str]:
         retry_once=True,
     )
 
+    log_ctx = {
+        "access_point": access_point,
+        "device_host": ip,
+        "door_id": door,
+        "success": bool(ok),
+    }
+
     if ok:
-        return True, "✅ Abierto"
-    return False, "❌ No se pudo abrir"
+        return True, f"Listo. {label} abierto.", log_ctx
+    return False, f"No se pudo abrir {label}.", log_ctx
 
 
 async def _isapi_open_door(
