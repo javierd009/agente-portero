@@ -146,9 +146,10 @@ def _random_digits(n: int) -> str:
 def _make_qr_png(data: str) -> bytes:
     qr = qrcode.QRCode(
         version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10,
-        border=4,
+        # Use highest error correction for better scan reliability on biometrics
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=12,
+        border=8,
     )
     qr.add_data(data)
     qr.make(fit=True)
