@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Backend API (FastAPI)
+  backend:
+    image: ghcr.io/javierd009/agente-portero-backend:latest
+    environment:
+      # Supabase Database
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+
+      # Redis (shared redis service on IntegratecNet)
+      - REDIS_URL=redis://redis:6379
+
+      # Environment
+      - ENVIRONMENT=production
+      - DEBUG=false
+    networks:
+      - IntegratecNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.portero-api.rule=Host(`api-portero.integratec-ia.com`)"
+        - "traefik.http.routers.portero-api.entrypoints=websecure"
+        - "traefik.http.routers.portero-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.portero-api.loadbalancer.server.port=8000"
+
+  # WhatsApp Service
+  whatsapp-service:
+    image: ghcr.io/javierd009/agente-portero-whatsapp:latest
+    environment:
+      # Evolution API
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-agente_portero}
+
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_WHISPER_KEY=${OPENAI_WHISPER_KEY}
+
+      # Backend (using external URL for reliability)
+      - BACKEND_API_URL=https://api-portero.integratec-ia.com
+
+      # Redis (shared redis service on IntegratecNet)
+      - REDIS_URL=redis://redis:6379
+
+      # Environment
+      - DEBUG=false
+    networks:
+      - IntegratecNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.portero-whatsapp.rule=Host(`whatsapp-portero.integratec-ia.com`)"
+        - "traefik.http.routers.portero-whatsapp.entrypoints=websecure"
+        - "traefik.http.routers.portero-whatsapp.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.portero-whatsapp.loadbalancer.server.port=8002"
+
+  # NOTE: voice-service runs locally on FreePBX server (172.20.20.1) for low-latency audio
+  # Configure it with: BACKEND_API_URL=https://api-portero.integratec-ia.com
+
+  # NOTE: Evolution API already running at devevoapi.integratec-ia.com
+  # Instance: Sitnova_portero
+
+  # NOTE: Redis already running as 'redis' service on IntegratecNet (no password)
+
+networks:
+  IntegratecNet:
+    external: true

@@ -1,0 +1,152 @@
+version: '3.8'
+
+# Docker Compose para Portainer
+# Deploy de servicios backend de Agente Portero
+
+services:
+  # Backend API (FastAPI)
+  backend:
+    build:
+      context: ./services/backend
+      dockerfile: Dockerfile
+    container_name: agente-portero-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Supabase Database
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+
+      # Redis
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+
+      # Environment
+      - ENVIRONMENT=production
+      - DEBUG=false
+    depends_on:
+      - redis
+    networks:
+      - agente-portero
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # WhatsApp Service
+  whatsapp-service:
+    build:
+      context: ./services/whatsapp-service
+      dockerfile: Dockerfile
+    container_name: agente-portero-whatsapp
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      # Evolution API
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-agente_portero}
+
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Backend
+      - BACKEND_API_URL=http://backend:8000
+
+      # Redis
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+
+      # Environment
+      - DEBUG=false
+    depends_on:
+      - backend
+      - redis
+      - evolution-api
+    networks:
+      - agente-portero
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Voice Service
+  voice-service:
+    build:
+      context: ./services/voice-service
+      dockerfile: Dockerfile
+    container_name: agente-portero-voice
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      # Asterisk ARI
+      - ASTERISK_ARI_URL=${ASTERISK_ARI_URL}
+      - ASTERISK_ARI_USER=${ASTERISK_ARI_USER}
+      - ASTERISK_ARI_PASSWORD=${ASTERISK_ARI_PASSWORD}
+      - ASTERISK_ARI_APP=agente-portero
+
+      # OpenAI Realtime
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_REALTIME_MODEL=gpt-4o-realtime-preview-2024-12-17
+
+      # Backend
+      - BACKEND_API_URL=http://backend:8000
+
+      # Environment
+      - DEBUG=false
+    depends_on:
+      - backend
+    networks:
+      - agente-portero
+
+  # Evolution API (WhatsApp)
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: agente-portero-evolution
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - DATABASE_ENABLED=false
+      - QRCODE_COLOR=#198754
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+    networks:
+      - agente-portero
+
+  # Redis (Cache & Sessions)
+  redis:
+    image: redis:7-alpine
+    container_name: agente-portero-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    networks:
+      - agente-portero
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  agente-portero:
+    driver: bridge
+
+volumes:
+  redis_data:
+  evolution_instances:
+  evolution_store:

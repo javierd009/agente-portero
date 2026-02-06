@@ -1,0 +1,89 @@
+version: '3.8'
+
+# Stack simplificado - Evolution API se usa EXTERNA (como en Isaac)
+# La Evolution API ya está corriendo en: https://devevoapi.integratec-ia.com
+
+services:
+  # Backend API (FastAPI)
+  backend:
+    image: ghcr.io/javierd009/agente-portero-backend:latest
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENVIRONMENT=production
+      - DEBUG=false
+      # Vision service URL for camera connectivity (on-premise)
+      # Set this after deploying vision-service on FreePBX
+      - VISION_SERVICE_URL=${VISION_SERVICE_URL:-}
+    networks:
+      - IntegratecNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.portero-api.rule=Host(`api-portero.integratec-ia.com`)"
+        - "traefik.http.routers.portero-api.entrypoints=websecure"
+        - "traefik.http.routers.portero-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.portero-api.loadbalancer.server.port=8000"
+        - "traefik.docker.network=IntegratecNet"
+
+  # WhatsApp Service
+  whatsapp-service:
+    image: ghcr.io/javierd009/agente-portero-whatsapp:latest
+    environment:
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BACKEND_API_URL=http://backend:8000
+      - DEBUG=false
+    networks:
+      - IntegratecNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.portero-whatsapp.rule=Host(`whatsapp-portero.integratec-ia.com`)"
+        - "traefik.http.routers.portero-whatsapp.entrypoints=websecure"
+        - "traefik.http.routers.portero-whatsapp.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.portero-whatsapp.loadbalancer.server.port=8002"
+        - "traefik.docker.network=IntegratecNet"
+
+  # Voice Service
+  voice-service:
+    image: ghcr.io/javierd009/agente-portero-voice:latest
+    environment:
+      - ASTERISK_ARI_URL=${ASTERISK_ARI_URL}
+      - ASTERISK_ARI_USER=${ASTERISK_ARI_USER}
+      - ASTERISK_ARI_PASSWORD=${ASTERISK_ARI_PASSWORD}
+      - ASTERISK_ARI_APP=agente-portero
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_REALTIME_MODEL=gpt-4o-realtime-preview-2024-12-17
+      - BACKEND_API_URL=http://backend:8000
+      - DEBUG=false
+    ports:
+      - "9089:8089"
+    networks:
+      - IntegratecNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.portero-voice.rule=Host(`voice-portero.integratec-ia.com`)"
+        - "traefik.http.routers.portero-voice.entrypoints=websecure"
+        - "traefik.http.routers.portero-voice.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.portero-voice.loadbalancer.server.port=8001"
+        - "traefik.docker.network=IntegratecNet"
+
+networks:
+  IntegratecNet:
+    external: true

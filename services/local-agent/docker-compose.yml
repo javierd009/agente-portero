@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  local-agent:
+    build: .
+    container_name: portero-local-agent
+    restart: unless-stopped
+    ports:
+      - "9010:9010"
+    environment:
+      # Shared secret for callers (backend/davi). Set to a strong random value.
+      - LOCAL_AGENT_KEY=${LOCAL_AGENT_KEY}
+
+      # Panel control de acceso (DS-K2602T)
+      - ACS_PANEL_HOST=172.20.22.3
+      - ACS_PANEL_USER=admin
+      - ACS_PANEL_PASS=${ACS_PANEL_PASS}
+
+      # Biométrico vehicular (DS-K1T...)
+      - BIO_VEH_HOST=172.20.22.136
+      - BIO_VEH_USER=admin
+      - BIO_VEH_PASS=${BIO_VEH_PASS}
+
+      # Biométrico peatonal (DS-K1T...)
+      - BIO_PED_HOST=172.20.22.1
+      - BIO_PED_USER=admin
+      - BIO_PED_PASS=${BIO_PED_PASS}

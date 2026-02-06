@@ -1,0 +1,64 @@
+# go2rtc - Streaming Gateway para Agente Portero
+# Convierte RTSP de cámaras Hikvision a WebRTC para el dashboard
+#
+# Ubicación en producción: FreePBX (on-premise) para acceso directo a cámaras
+# Puerto 1984: Web UI + API
+# Puerto 8555: WebRTC
+
+streams:
+  # ============================================
+  # Cámara Principal - Puerta de Entrada
+  # ============================================
+
+  # Main stream (máxima calidad - 2MP+)
+  entrada_main:
+    - "rtsp://{HIKVISION_USER}:{HIKVISION_PASSWORD}@{HIKVISION_HOST}:554/Streaming/Channels/101"
+
+  # Sub stream (baja resolución - para grid/thumbnails)
+  entrada_sub:
+    - "rtsp://{HIKVISION_USER}:{HIKVISION_PASSWORD}@{HIKVISION_HOST}:554/Streaming/Channels/102"
+
+  # ============================================
+  # Cámaras adicionales (agregar según necesidad)
+  # ============================================
+
+  # Ejemplo: Estacionamiento
+  # estacionamiento_main:
+  #   - "rtsp://admin:password@172.20.22.112:554/Streaming/Channels/101"
+
+  # Ejemplo: Lobby
+  # lobby_main:
+  #   - "rtsp://admin:password@172.20.22.113:554/Streaming/Channels/101"
+
+# ============================================
+# Configuración de Servidores
+# ============================================
+
+# API Web + UI de administración
+api:
+  listen: ":1984"
+  origin: "*"  # CORS - ajustar en producción
+
+# Servidor RTSP (para re-streaming si es necesario)
+rtsp:
+  listen: ":8554"
+
+# Servidor WebRTC (principal para navegadores)
+webrtc:
+  listen: ":8555/tcp"
+
+  # ICE candidates - configurar según ubicación
+  # Para acceso local (FreePBX):
+  candidates:
+    - "172.20.20.1:8555"      # IP local FreePBX
+    - "stun:stun.l.google.com:19302"  # STUN público
+
+  # Para acceso externo (si se expone):
+  # candidates:
+  #   - "integrateccr.ddns.net:8555"
+
+# ============================================
+# Logging
+# ============================================
+log:
+  level: info  # debug, info, warn, error

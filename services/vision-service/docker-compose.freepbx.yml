@@ -1,0 +1,70 @@
+# Vision Service - FreePBX Deployment
+# Deploy: docker-compose -f docker-compose.freepbx.yml up -d
+#
+# Prerequisites:
+#   - Docker installed on FreePBX server
+#   - Network access to Hikvision cameras (172.20.22.111)
+#   - Network access to backend API (cloud)
+#
+# Option 1: Pull from GitHub Container Registry (after push to main)
+#   docker-compose -f docker-compose.freepbx.yml pull
+#   docker-compose -f docker-compose.freepbx.yml up -d
+#
+# Option 2: Build locally
+#   docker-compose -f docker-compose.freepbx.yml build
+#   docker-compose -f docker-compose.freepbx.yml up -d
+
+version: '3.8'
+
+services:
+  vision-service:
+    # Use GHCR image or build locally if not available
+    image: ${VISION_IMAGE:-ghcr.io/javierd009/agente-portero-vision:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: portero-vision
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      # Override from .env or use defaults
+      - HIKVISION_HOST=${HIKVISION_HOST:-172.20.22.111}
+      - HIKVISION_PORT=${HIKVISION_PORT:-80}
+      - HIKVISION_USER=${HIKVISION_USER:-admin}
+      - HIKVISION_PASSWORD=${HIKVISION_PASSWORD:-integratec20}
+
+      # Backend API (cloud)
+      - BACKEND_API_URL=${BACKEND_API_URL:-https://api-portero.integratec-ia.com}
+
+      # Detection settings
+      - YOLO_MODEL=${YOLO_MODEL:-yolov8n.pt}
+      - YOLO_CONFIDENCE=${YOLO_CONFIDENCE:-0.5}
+      - OCR_LANGUAGE=${OCR_LANGUAGE:-es}
+
+      # Service
+      - SERVICE_PORT=8002
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      # Persist YOLO models (avoid re-downloading)
+      - vision-models:/root/.cache
+      # Optional: mount for captured images
+      - vision-captures:/app/captures
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - portero-network
+
+networks:
+  portero-network:
+    driver: bridge
+
+volumes:
+  vision-models:
+  vision-captures:

@@ -1,0 +1,27 @@
+# WhatsApp Service - Evolution API + NLP
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# HTTP clients
+httpx>=0.26.0
+aiohttp>=3.9.0
+
+# AI/NLP
+openai>=1.10.0              # GPT-4 for intent parsing
+anthropic>=0.18.0           # Claude (optional, for complex reasoning)
+
+# Redis (session management & cache)
+redis>=5.0.0
+hiredis>=2.3.0              # C parser for performance
+
+# Database
+asyncpg>=0.29.0
+sqlmodel>=0.0.14
+
+# Utils
+python-jose[cryptography]>=3.3.0  # JWT verification
+python-multipart>=0.0.6
+structlog>=24.1.0                  # Structured logging
