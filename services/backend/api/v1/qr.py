@@ -120,12 +120,19 @@ def _to_naive_utc(dt: datetime) -> datetime:
 
 
 def _format_local(dt: datetime, tz: str) -> str:
+    """Format datetimes for ISAPI Valid/cardValid fields.
+
+    Our DB uses TIMESTAMP WITHOUT TIME ZONE and we normalize to naive UTC.
+    Hikvision expects *local* time strings without offset.
+    """
     z = ZoneInfo(tz)
+
     if dt.tzinfo is None:
-        # assume already local
-        local = dt.replace(tzinfo=z)
-    else:
-        local = dt.astimezone(z)
+        # Treat naive datetimes as UTC (NOT local), then convert to local timezone.
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    local = dt.astimezone(z)
+
     # ISAPI expects local string without offset
     return local.replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M:%S")
 
