@@ -20,6 +20,8 @@ from domain.models.qr_token import QrToken
 from domain.models.access_credential import AccessCredential
 from domain.models.audit_log import AuditLog
 from domain.models.access_log import AccessLog
+from infrastructure.hikvision.client import HikvisionGateClient
+from config import settings as app_settings
 
 router = APIRouter()
 
@@ -55,6 +57,9 @@ class ConsumeQrResponse(BaseModel):
     access_point: AccessPoint
     use_count: int
     max_uses: Optional[int] = None
+
+    gate_opened: bool
+    gate_method: Optional[str] = None
 
 
 @router.post("/revoke", response_model=RevokeQrResponse)
@@ -133,6 +138,7 @@ async def consume_qr(
     qr.used_at = now
 
     # Mirror in credential
+    cred: Optional[AccessCredential] = None
     if qr.credential_id:
         cres = await session.execute(select(AccessCredential).where(AccessCredential.id == qr.credential_id))
         cred = cres.scalar_one_or_none()
@@ -142,6 +148,37 @@ async def consume_qr(
             # enforce credential max_uses if set
             if cred.max_uses is not None and cred.use_count >= cred.max_uses:
                 cred.status = "used"
+
+    # Open gate immediately (Sitnova mapping via env/config)
+    door_id = 1
+    host = app_settings.hik_panel_host
+    port = app_settings.hik_panel_port
+    password = app_settings.hik_pass_default
+
+    if req.access_point == "vehicular_entry":
+        door_id = 1
+        host = app_settings.hik_panel_host
+        port = app_settings.hik_panel_port
+        password = app_settings.hik_pass_default
+    elif req.access_point == "vehicular_exit":
+        door_id = 2
+        host = app_settings.hik_panel_host
+        port = app_settings.hik_panel_port
+        password = app_settings.hik_pass_default
+    elif req.access_point == "pedestrian":
+        door_id = 1
+        host = app_settings.hik_pedestrian_host
+        port = app_settings.hik_pedestrian_port
+        password = app_settings.hik_pass_pedestrian
+
+    # Ensure timeout matches config
+    import os
+    os.environ["HIKVISION_TIMEOUT"] = str(app_settings.hik_timeout_seconds)
+
+    gate_client = HikvisionGateClient(host=host, port=port, username=app_settings.hik_user, password=password)
+    gate_result = await gate_client.open_gate(door_id=door_id)
+    gate_opened = bool(gate_result.get("success"))
+    gate_method = gate_result.get("method") if gate_opened else None
 
     # Access log
     access_log = AccessLog(
@@ -157,7 +194,13 @@ async def consume_qr(
         authorized_by=str(qr.resident_id) if qr.resident_id else None,
         camera_snapshot_url=None,
         confidence_score=None,
-        metadata={"token_id": str(qr.id)},
+        metadata={
+            "token_id": str(qr.id),
+            "gate_opened": gate_opened,
+            "gate_method": gate_method,
+            "device_host": host,
+            "door_id": door_id,
+        },
     )
     session.add(access_log)
 
@@ -169,9 +212,14 @@ async def consume_qr(
         action="consume_qr",
         resource_type="qr_token",
         resource_id=qr.id,
-        status="success",
-        message=f"consumed at {req.access_point} ({req.direction})",
-        metadata={"access_point": req.access_point, "direction": req.direction},
+        status="success" if gate_opened else "failure",
+        message=f"consumed at {req.access_point} ({req.direction}); opened={gate_opened}",
+        metadata={
+            "access_point": req.access_point,
+            "direction": req.direction,
+            "gate_opened": gate_opened,
+            "gate_method": gate_method,
+        },
     )
     session.add(audit)
 
@@ -184,4 +232,6 @@ async def consume_qr(
         access_point=req.access_point,
         use_count=qr.use_count,
         max_uses=qr.max_uses,
+        gate_opened=gate_opened,
+        gate_method=gate_method,
     )

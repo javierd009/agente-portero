@@ -27,6 +27,7 @@ class HikvisionGateClient:
 
         self.base_url = f"http://{self.host}:{self.port}"
         self.auth = httpx.DigestAuth(self.username, self.password)
+        self.timeout = float(os.getenv("HIKVISION_TIMEOUT", "3"))
 
     async def _request(
         self,
@@ -40,7 +41,7 @@ class HikvisionGateClient:
         headers = {"Content-Type": content_type} if data else {}
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.request(
                     method,
                     url,
