@@ -9,6 +9,9 @@ from .camera_event import CameraEvent
 from .camera import Camera
 from .notification import Notification
 from .report import Report
+from .access_credential import AccessCredential
+from .qr_token import QrToken
+from .audit_log import AuditLog
 
 __all__ = [
     "Condominium",
@@ -21,4 +24,7 @@ __all__ = [
     "Camera",
     "Notification",
     "Report",
+    "AccessCredential",
+    "QrToken",
+    "AuditLog",
 ]

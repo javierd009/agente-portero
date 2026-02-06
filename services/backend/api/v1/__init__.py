@@ -10,6 +10,7 @@ from . import (
     residents,
     visitors,
     reports,
+    qr,
 )
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "residents",
     "visitors",
     "reports",
+    "qr",
 ]

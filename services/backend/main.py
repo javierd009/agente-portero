@@ -20,6 +20,7 @@ from api.v1 import (
     residents,
     visitors,
     reports,
+    qr,
 )
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -71,6 +72,7 @@ app.include_router(camera_events.router, prefix="/api/v1/camera-events", tags=["
 app.include_router(cameras.router, prefix="/api/v1/cameras", tags=["cameras"])
 app.include_router(gates.router, prefix="/api/v1/gates", tags=["gates"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
+app.include_router(qr.router, prefix="/api/v1/qr", tags=["qr"])
 
 @app.get("/health")
 async def health_check():
