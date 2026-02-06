@@ -245,7 +245,9 @@ def _render_card(
     # Target QR size: as large as possible within available area
     avail_h = H - header_h - footer_h
     target = int(min(W * 0.86, avail_h * 0.96))
-    qr_img = qr_img.resize((target, target))
+    # IMPORTANT: resize with NEAREST to avoid blurring QR modules
+    _NEAREST = getattr(getattr(Image, "Resampling", Image), "NEAREST")
+    qr_img = qr_img.resize((target, target), resample=_NEAREST)
 
     qr_x = (W - qr_img.width) // 2
     qr_y = header_h + (avail_h - qr_img.height) // 2
