@@ -12,6 +12,7 @@ from . import (
     reports,
     qr,
     qr_landing,
+    qr_ops,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "reports",
     "qr",
     "qr_landing",
+    "qr_ops",
 ]

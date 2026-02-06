@@ -1,0 +1,187 @@
+"""QR Operations API - revoke and consume.
+
+MVP mode (no auth): requires resident_id in body for revoke and uses tenant header.
+Future mode: resident_id will be inferred from Supabase JWT.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional, Literal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, Field
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from infrastructure.database import get_session
+from domain.models.qr_token import QrToken
+from domain.models.access_credential import AccessCredential
+from domain.models.audit_log import AuditLog
+from domain.models.access_log import AccessLog
+
+router = APIRouter()
+
+AccessPoint = Literal["vehicular_entry", "vehicular_exit", "pedestrian"]
+Direction = Literal["entry", "exit"]
+
+
+def get_tenant_id(x_tenant_id: UUID = Header(..., description="Tenant/Condominium ID")) -> UUID:
+    return x_tenant_id
+
+
+class RevokeQrRequest(BaseModel):
+    resident_id: UUID
+    token: str
+    reason: Optional[str] = None
+
+
+class RevokeQrResponse(BaseModel):
+    revoked: bool
+    token: str
+
+
+class ConsumeQrRequest(BaseModel):
+    token: str
+    access_point: AccessPoint
+    direction: Direction = "entry"  # default for most condos
+
+
+class ConsumeQrResponse(BaseModel):
+    accepted: bool
+    token: str
+    direction: Direction
+    access_point: AccessPoint
+    use_count: int
+    max_uses: Optional[int] = None
+
+
+@router.post("/revoke", response_model=RevokeQrResponse)
+async def revoke_qr(
+    req: RevokeQrRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    res = await session.execute(select(QrToken).where(QrToken.token == req.token))
+    qr = res.scalar_one_or_none()
+    if not qr or qr.condominium_id != tenant_id:
+        raise HTTPException(status_code=404, detail="QR not found")
+
+    # Ownership check (MVP)
+    if qr.resident_id != req.resident_id:
+        raise HTTPException(status_code=403, detail="Cannot revoke QR not issued by you")
+
+    now = datetime.utcnow()
+    if not qr.revoked_at:
+        qr.revoked_at = now
+
+    # Revoke credential if present
+    if qr.credential_id:
+        cres = await session.execute(select(AccessCredential).where(AccessCredential.id == qr.credential_id))
+        cred = cres.scalar_one_or_none()
+        if cred and cred.condominium_id == tenant_id:
+            cred.status = "revoked"
+            cred.revoked_at = now
+
+    audit = AuditLog(
+        condominium_id=tenant_id,
+        actor_type="resident",
+        actor_id=str(req.resident_id),
+        actor_label=None,
+        action="revoke_qr",
+        resource_type="qr_token",
+        resource_id=qr.id,
+        status="success",
+        message=req.reason or "QR revoked",
+        metadata={"token": req.token},
+    )
+    session.add(audit)
+
+    await session.commit()
+    return RevokeQrResponse(revoked=True, token=req.token)
+
+
+@router.post("/consume", response_model=ConsumeQrResponse)
+async def consume_qr(
+    req: ConsumeQrRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    session: AsyncSession = Depends(get_session),
+):
+    res = await session.execute(select(QrToken).where(QrToken.token == req.token))
+    qr = res.scalar_one_or_none()
+    if not qr or qr.condominium_id != tenant_id:
+        raise HTTPException(status_code=404, detail="QR not found")
+
+    now = datetime.utcnow()
+
+    if qr.revoked_at:
+        raise HTTPException(status_code=410, detail="QR revoked")
+
+    if qr.expires_at <= now:
+        raise HTTPException(status_code=410, detail="QR expired")
+
+    allowed = set(qr.allowed_access_points or [])
+    if req.access_point not in allowed:
+        raise HTTPException(status_code=403, detail="Access point not allowed")
+
+    if qr.max_uses is not None and qr.use_count >= qr.max_uses:
+        raise HTTPException(status_code=410, detail="QR usage limit reached")
+
+    # Update counters
+    qr.use_count += 1
+    qr.used_at = now
+
+    # Mirror in credential
+    if qr.credential_id:
+        cres = await session.execute(select(AccessCredential).where(AccessCredential.id == qr.credential_id))
+        cred = cres.scalar_one_or_none()
+        if cred and cred.condominium_id == tenant_id:
+            cred.use_count = (cred.use_count or 0) + 1
+            cred.used_at = now
+            # enforce credential max_uses if set
+            if cred.max_uses is not None and cred.use_count >= cred.max_uses:
+                cred.status = "used"
+
+    # Access log
+    access_log = AccessLog(
+        condominium_id=tenant_id,
+        event_type=req.direction,
+        access_point=req.access_point,
+        direction=req.direction,
+        resident_id=qr.resident_id,
+        visitor_id=qr.visitor_id,
+        visitor_name=(qr.metadata or {}).get("visitor_name"),
+        vehicle_plate=None,
+        authorization_method="qr",
+        authorized_by=str(qr.resident_id) if qr.resident_id else None,
+        camera_snapshot_url=None,
+        confidence_score=None,
+        metadata={"token_id": str(qr.id)},
+    )
+    session.add(access_log)
+
+    audit = AuditLog(
+        condominium_id=tenant_id,
+        actor_type="system",
+        actor_id=None,
+        actor_label="qr_consume",
+        action="consume_qr",
+        resource_type="qr_token",
+        resource_id=qr.id,
+        status="success",
+        message=f"consumed at {req.access_point} ({req.direction})",
+        metadata={"access_point": req.access_point, "direction": req.direction},
+    )
+    session.add(audit)
+
+    await session.commit()
+
+    return ConsumeQrResponse(
+        accepted=True,
+        token=req.token,
+        direction=req.direction,
+        access_point=req.access_point,
+        use_count=qr.use_count,
+        max_uses=qr.max_uses,
+    )
