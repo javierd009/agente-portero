@@ -82,6 +82,11 @@ class IssueVisitQrResponse(BaseModel):
     provisioned: bool
     provisioned_devices: List[str] = Field(default_factory=list)
 
+    # Condo context (for outbound WhatsApp messages)
+    condo_name: str
+    waze_url: Optional[str] = None
+    whatsapp_message: str
+
     # convenience: return a branded PNG card
     card_png_base64: str
 
@@ -445,6 +450,11 @@ async def issue_visit_qr(
 
     # Render card: QR encodes card_no (what the visitor presents)
     condo = await _get_condo(session, tenant_id)
+
+    settings = condo.settings or {}
+    location = (settings.get("location") or {}) if isinstance(settings, dict) else {}
+    waze_url = location.get("waze_url") if isinstance(location, dict) else None
+
     qr_png = _make_qr_png(card_no)
     logo_bytes = await _maybe_fetch_logo_from_settings(condo)
     card_png = _render_card(
@@ -459,6 +469,26 @@ async def issue_visit_qr(
 
     card_b64 = base64.b64encode(card_png).decode("ascii")
 
+    # Compose WhatsApp-friendly message (visitor-facing)
+    valid_from_str = valid_from.strftime("%d/%m %H:%M")
+    valid_until_str = valid_until.strftime("%d/%m %H:%M")
+
+    wa_lines = [
+        f"Hola! Te he autorizado para poder ingresar a {condo.name}.",
+        "",
+        "Usa el código QR adjunto que te permitirá acceder a la entrada automáticamente.",
+        "Solo acércalo al lector en la entrada y listo.",
+        "",
+        f"Vigencia: {valid_from_str} → {valid_until_str}",
+        f"Código: {card_no}",
+        "",
+        "Seguridad virtual: SITNOVA",
+    ]
+    if waze_url:
+        wa_lines += ["", f"Ubicación Waze: {waze_url}"]
+
+    whatsapp_message = "\n".join(wa_lines)
+
     await session.commit()
 
     return IssueVisitQrResponse(
@@ -472,5 +502,8 @@ async def issue_visit_qr(
         expires_at=valid_until,
         provisioned=provisioned_ok,
         provisioned_devices=provisioned_devices,
+        condo_name=condo.name,
+        waze_url=waze_url,
+        whatsapp_message=whatsapp_message,
         card_png_base64=card_b64,
     )
