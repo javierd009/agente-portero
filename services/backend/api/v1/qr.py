@@ -23,6 +23,7 @@ import httpx
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -32,6 +33,7 @@ from domain.models import Condominium, Visitor
 from domain.models.access_credential import AccessCredential
 from domain.models.qr_token import QrToken
 from domain.models.audit_log import AuditLog
+from config import settings as app_settings
 
 router = APIRouter()
 
@@ -67,6 +69,7 @@ class IssueVisitQrResponse(BaseModel):
     qr_token_id: UUID
 
     token: str
+    token_url: str
     expires_at: datetime
 
     # convenience: return a branded PNG card
@@ -108,6 +111,11 @@ def _make_qr_png(data: str) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _token_url(token: str) -> str:
+    base = (app_settings.public_base_url or "").rstrip("/")
+    return f"{base}/qr/{token}"
 
 
 def _load_logo_bytes() -> Optional[bytes]:
@@ -302,7 +310,8 @@ async def issue_visit_qr(
 
     # Render card
     condo = await _get_condo(session, tenant_id)
-    qr_png = _make_qr_png(token)
+    qr_url = _token_url(token)
+    qr_png = _make_qr_png(qr_url)
     logo_bytes = await _maybe_fetch_logo_from_settings(condo)
     card_png = _render_card(
         condo_name=condo.name,
@@ -322,6 +331,7 @@ async def issue_visit_qr(
         credential_id=credential.id,
         qr_token_id=qr.id,
         token=token,
+        token_url=qr_url,
         expires_at=req.valid_until,
         card_png_base64=card_b64,
     )

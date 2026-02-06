@@ -11,6 +11,7 @@ from . import (
     visitors,
     reports,
     qr,
+    qr_landing,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "visitors",
     "reports",
     "qr",
+    "qr_landing",
 ]

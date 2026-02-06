@@ -9,6 +9,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+from config import settings as app_settings
+
 from api.v1 import (
     agents,
     access,
@@ -21,6 +23,7 @@ from api.v1 import (
     visitors,
     reports,
     qr,
+    qr_landing,
 )
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,6 +76,8 @@ app.include_router(cameras.router, prefix="/api/v1/cameras", tags=["cameras"])
 app.include_router(gates.router, prefix="/api/v1/gates", tags=["gates"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 app.include_router(qr.router, prefix="/api/v1/qr", tags=["qr"])
+# Public landing/validation (used by QR scans)
+app.include_router(qr_landing.router, tags=["qr-public"])
 
 @app.get("/health")
 async def health_check():
