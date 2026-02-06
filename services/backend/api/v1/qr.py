@@ -253,7 +253,13 @@ def _render_card(
 
     # Footer details
     y = H - footer_h + 40
-    draw.text((margin, y), f"Visitante: {visitor_name}", fill=(30, 30, 30), font=font_body)
+
+    # Keep text readable (avoid overflow)
+    name_line = f"Visitante: {visitor_name}".strip()
+    if len(name_line) > 40:
+        name_line = name_line[:37] + "…"
+
+    draw.text((margin, y), name_line, fill=(30, 30, 30), font=font_body)
 
     y += 60
     draw.text((margin, y), f"Válido hasta: {valid_until.strftime('%d/%m/%Y %H:%M')}", fill=(30, 30, 30), font=font_body)
@@ -263,9 +269,11 @@ def _render_card(
     y += 38
     draw.text((margin, y), str(card_no), fill=(10, 10, 10), font=font_code)
 
-    # Branding small at bottom
-    footer = "Powered by SITNOVA SECURITY"
-    draw.text((margin, H - margin - 40), footer, fill=(120, 120, 120), font=font_small)
+    # Branding centered at bottom
+    footer = "Powered by INTEGRATEC IA"
+    footer_w = draw.textlength(footer, font=font_small)
+    footer_x = int((W - footer_w) / 2)
+    draw.text((footer_x, H - margin - 40), footer, fill=(120, 120, 120), font=font_small)
 
     out = io.BytesIO()
     bg.save(out, format="PNG")
