@@ -193,60 +193,68 @@ def _render_card(
     visitor_name: str,
     valid_until: datetime,
     allowed_access_points: List[str],
+    card_no: str,
     qr_png: bytes,
     logo_bytes: Optional[bytes],
 ) -> bytes:
-    # Basic card layout 1200x700
-    W, H = 1200, 700
+    # Recommended vertical card layout for better biometric QR scanning
+    # 1080x1920 (phone-friendly)
+    W, H = 1080, 1920
     bg = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(bg)
 
     # Fonts (fallback to default)
     try:
-        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 48)
-        font_body = ImageFont.truetype("DejaVuSans.ttf", 28)
-        font_small = ImageFont.truetype("DejaVuSans.ttf", 22)
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 58)
+        font_body = ImageFont.truetype("DejaVuSans.ttf", 40)
+        font_small = ImageFont.truetype("DejaVuSans.ttf", 30)
+        font_code = ImageFont.truetype("DejaVuSans-Bold.ttf", 56)
     except Exception:
         font_title = ImageFont.load_default()
         font_body = ImageFont.load_default()
         font_small = ImageFont.load_default()
+        font_code = ImageFont.load_default()
 
-    margin = 40
+    margin = 60
 
-    # Logo
+    # Header
+    draw.text((margin, margin), condo_name, fill=(20, 20, 20), font=font_title)
+
+    # Optional logo (top-right)
     if logo_bytes:
         try:
             logo = Image.open(io.BytesIO(logo_bytes)).convert("RGBA")
-            # fit into 260x120
-            logo.thumbnail((260, 120))
+            logo.thumbnail((260, 140))
             bg.paste(logo, (W - margin - logo.width, margin), logo)
         except Exception:
             pass
 
-    # Title: Condominium name
-    draw.text((margin, margin), condo_name, fill=(20, 20, 20), font=font_title)
-
-    # Subtitle: visitor
-    y = margin + 70
-    draw.text((margin, y), f"Visitante: {visitor_name}", fill=(30, 30, 30), font=font_body)
-
-    y += 45
-    draw.text((margin, y), f"Válido hasta: {valid_until.strftime('%d/%m/%Y %H:%M')}", fill=(30, 30, 30), font=font_body)
-
-    y += 45
-    points = ", ".join(allowed_access_points)
-    draw.text((margin, y), f"Accesos: {points}", fill=(30, 30, 30), font=font_small)
-
-    # QR (right side)
+    # QR centered and large
     qr_img = Image.open(io.BytesIO(qr_png)).convert("RGBA")
-    qr_img.thumbnail((420, 420))
-    qr_x = W - margin - qr_img.width
-    qr_y = H - margin - qr_img.height
+
+    # Target QR size ~70% of width (big, reliable)
+    target = int(W * 0.78)
+    qr_img = qr_img.resize((target, target))
+
+    qr_x = (W - qr_img.width) // 2
+    qr_y = 260  # space for header
     bg.paste(qr_img, (qr_x, qr_y), qr_img)
 
-    # Footer branding
+    # Footer details
+    y = qr_y + qr_img.height + 80
+    draw.text((margin, y), f"Visitante: {visitor_name}", fill=(30, 30, 30), font=font_body)
+
+    y += 60
+    draw.text((margin, y), f"Válido hasta: {valid_until.strftime('%d/%m/%Y %H:%M')}", fill=(30, 30, 30), font=font_body)
+
+    y += 70
+    draw.text((margin, y), "Código:", fill=(60, 60, 60), font=font_small)
+    y += 38
+    draw.text((margin, y), str(card_no), fill=(10, 10, 10), font=font_code)
+
+    # Branding small at bottom
     footer = "Powered by SITNOVA SECURITY"
-    draw.text((margin, H - margin - 30), footer, fill=(90, 90, 90), font=font_small)
+    draw.text((margin, H - margin - 40), footer, fill=(120, 120, 120), font=font_small)
 
     out = io.BytesIO()
     bg.save(out, format="PNG")
@@ -422,6 +430,7 @@ async def issue_visit_qr(
         visitor_name=req.visitor_name,
         valid_until=valid_until,
         allowed_access_points=allowed,
+        card_no=card_no,
         qr_png=qr_png,
         logo_bytes=logo_bytes,
     )
