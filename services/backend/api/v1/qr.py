@@ -197,9 +197,9 @@ def _render_card(
     qr_png: bytes,
     logo_bytes: Optional[bytes],
 ) -> bytes:
-    # Recommended vertical card layout for better biometric QR scanning
-    # 1080x1920 (phone-friendly)
-    W, H = 1080, 1920
+    # Square card layout for better sharing/printing and reliable biometric QR scanning
+    # 1200x1200
+    W, H = 1200, 1200
     bg = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(bg)
 
@@ -232,16 +232,20 @@ def _render_card(
     # QR centered and large
     qr_img = Image.open(io.BytesIO(qr_png)).convert("RGBA")
 
-    # Target QR size ~70% of width (big, reliable)
-    target = int(W * 0.78)
+    header_h = 170
+    footer_h = 300
+
+    # Target QR size: as large as possible within available area
+    avail_h = H - header_h - footer_h
+    target = int(min(W * 0.86, avail_h * 0.96))
     qr_img = qr_img.resize((target, target))
 
     qr_x = (W - qr_img.width) // 2
-    qr_y = 260  # space for header
+    qr_y = header_h + (avail_h - qr_img.height) // 2
     bg.paste(qr_img, (qr_x, qr_y), qr_img)
 
     # Footer details
-    y = qr_y + qr_img.height + 80
+    y = H - footer_h + 40
     draw.text((margin, y), f"Visitante: {visitor_name}", fill=(30, 30, 30), font=font_body)
 
     y += 60
