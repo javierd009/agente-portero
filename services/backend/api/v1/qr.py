@@ -267,7 +267,7 @@ async def issue_visit_qr(
         max_uses=req.max_uses,
         provisioning_mode="device",  # target: eventually provision into Hikvision
         device_target={},
-        metadata={"flow": "issue_visit_qr"},
+        extra_data={"flow": "issue_visit_qr"},
     )
     session.add(credential)
     await session.flush()
@@ -283,7 +283,7 @@ async def issue_visit_qr(
         allowed_access_points=allowed,
         expires_at=req.valid_until,
         max_uses=req.max_uses,
-        metadata={"visitor_name": req.visitor_name},
+        extra_data={"visitor_name": req.visitor_name},
     )
     session.add(qr)
 
@@ -298,7 +298,7 @@ async def issue_visit_qr(
         resource_id=qr.id,
         status="success",
         message="QR issued",
-        metadata={
+        extra_data={
             "visitor_id": str(visitor.id),
             "credential_id": str(credential.id),
             "allowed_access_points": allowed,

@@ -30,7 +30,7 @@ class QrTokenBase(SQLModel):
     max_uses: Optional[int] = None
     use_count: int = Field(default=0)
 
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    extra_data: Dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
 
 class QrToken(QrTokenBase, table=True):

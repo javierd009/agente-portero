@@ -99,7 +99,7 @@ async def revoke_qr(
         resource_id=qr.id,
         status="success",
         message=req.reason or "QR revoked",
-        metadata={"token": req.token},
+        extra_data={"token": req.token},
     )
     session.add(audit)
 
@@ -188,13 +188,13 @@ async def consume_qr(
         direction=req.direction,
         resident_id=qr.resident_id,
         visitor_id=qr.visitor_id,
-        visitor_name=(qr.metadata or {}).get("visitor_name"),
+        visitor_name=(qr.extra_data or {}).get("visitor_name"),
         vehicle_plate=None,
         authorization_method="qr",
         authorized_by=str(qr.resident_id) if qr.resident_id else None,
         camera_snapshot_url=None,
         confidence_score=None,
-        metadata={
+        extra_data={
             "token_id": str(qr.id),
             "gate_opened": gate_opened,
             "gate_method": gate_method,
@@ -214,7 +214,7 @@ async def consume_qr(
         resource_id=qr.id,
         status="success" if gate_opened else "failure",
         message=f"consumed at {req.access_point} ({req.direction}); opened={gate_opened}",
-        metadata={
+        extra_data={
             "access_point": req.access_point,
             "direction": req.direction,
             "gate_opened": gate_opened,

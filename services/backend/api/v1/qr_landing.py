@@ -88,7 +88,7 @@ async def qr_landing(token: str, session: AsyncSession = Depends(get_session)):
         resource_id=qr.id,
         status="success",
         message=f"scan status={status}",
-        metadata={
+        extra_data={
             "token_id": str(qr.id),
             "credential_id": str(qr.credential_id) if qr.credential_id else None,
             "status": status,

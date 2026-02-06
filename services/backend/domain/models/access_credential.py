@@ -32,9 +32,9 @@ class AccessCredentialBase(SQLModel):
     use_count: int = Field(default=0)
 
     provisioning_mode: str = Field(default="backend")  # backend | device
-    device_target: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    device_target: Dict[str, Any] = Field(default_factory=dict, sa_column=Column("device_target", JSON))
 
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    extra_data: Dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
 
 class AccessCredential(AccessCredentialBase, table=True):
@@ -63,4 +63,4 @@ class AccessCredentialUpdate(SQLModel):
     max_uses: Optional[int] = None
     use_count: Optional[int] = None
     allowed_access_points: Optional[List[str]] = None
-    metadata: Optional[Dict[str, Any]] = None
+    extra_data: Optional[Dict[str, Any]] = None

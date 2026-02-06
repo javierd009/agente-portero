@@ -23,7 +23,7 @@ class AuditLogBase(SQLModel):
 
     status: str = Field(default="success")  # success | failure
     message: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    extra_data: Dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
 
 class AuditLog(AuditLogBase, table=True):
