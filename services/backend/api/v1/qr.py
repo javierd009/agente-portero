@@ -213,8 +213,8 @@ def _render_card(
     # Fonts (fallback to default)
     try:
         font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 58)
-        font_body = ImageFont.truetype("DejaVuSans.ttf", 40)
-        font_small = ImageFont.truetype("DejaVuSans.ttf", 30)
+        font_body = ImageFont.truetype("DejaVuSans-Bold.ttf", 40)
+        font_small = ImageFont.truetype("DejaVuSans-Bold.ttf", 30)
         font_code = ImageFont.truetype("DejaVuSans-Bold.ttf", 56)
     except Exception:
         font_title = ImageFont.load_default()
@@ -259,13 +259,13 @@ def _render_card(
     if len(name_line) > 40:
         name_line = name_line[:37] + "…"
 
-    draw.text((margin, y), name_line, fill=(30, 30, 30), font=font_body)
+    draw.text((margin, y), name_line, fill=(10, 10, 10), font=font_body)
 
     y += 60
-    draw.text((margin, y), f"Válido hasta: {valid_until.strftime('%d/%m/%Y %H:%M')}", fill=(30, 30, 30), font=font_body)
+    draw.text((margin, y), f"Válido hasta: {valid_until.strftime('%d/%m/%Y %H:%M')}", fill=(10, 10, 10), font=font_body)
 
     y += 70
-    draw.text((margin, y), "Código:", fill=(60, 60, 60), font=font_small)
+    draw.text((margin, y), "CÓDIGO:", fill=(10, 10, 10), font=font_small)
     y += 38
     draw.text((margin, y), str(card_no), fill=(10, 10, 10), font=font_code)
 
@@ -273,7 +273,7 @@ def _render_card(
     footer = "Powered by INTEGRATEC IA"
     footer_w = draw.textlength(footer, font=font_small)
     footer_x = int((W - footer_w) / 2)
-    draw.text((footer_x, H - margin - 40), footer, fill=(120, 120, 120), font=font_small)
+    draw.text((footer_x, H - margin - 40), footer, fill=(40, 40, 40), font=font_small)
 
     out = io.BytesIO()
     bg.save(out, format="PNG")
