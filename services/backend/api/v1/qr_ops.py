@@ -6,7 +6,7 @@ Future mode: resident_id will be inferred from Supabase JWT.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Literal
 from uuid import UUID
 
@@ -31,6 +31,13 @@ Direction = Literal["entry", "exit"]
 
 def get_tenant_id(x_tenant_id: UUID = Header(..., description="Tenant/Condominium ID")) -> UUID:
     return x_tenant_id
+
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Normalize datetime for DB columns defined as TIMESTAMP WITHOUT TIME ZONE."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 class RevokeQrRequest(BaseModel):
@@ -118,12 +125,13 @@ async def consume_qr(
     if not qr or qr.condominium_id != tenant_id:
         raise HTTPException(status_code=404, detail="QR not found")
 
-    now = datetime.utcnow()
+    now = _to_naive_utc(datetime.now(timezone.utc))
 
     if qr.revoked_at:
         raise HTTPException(status_code=410, detail="QR revoked")
 
-    if qr.expires_at <= now:
+    expires_at = _to_naive_utc(qr.expires_at)
+    if expires_at <= now:
         raise HTTPException(status_code=410, detail="QR expired")
 
     allowed = set(qr.allowed_access_points or [])

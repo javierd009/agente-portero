@@ -4,6 +4,7 @@ Controls access gates via Hikvision camera/access control ISAPI
 """
 import os
 import logging
+import asyncio
 from typing import Optional, Dict, Any
 import httpx
 
@@ -11,7 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 class HikvisionGateClient:
-    """Client for Hikvision gate control via ISAPI"""
+    """Client for Hikvision ISAPI.
+
+    This client supports:
+    - RemoteControlDoor (optional)
+    - AccessControl provisioning: create user + assign card (QR)
+    """
 
     def __init__(
         self,
@@ -61,74 +67,129 @@ class HikvisionGateClient:
             return {"success": False, "error": str(e)}
 
     async def open_gate(self, door_id: int = 1) -> Dict[str, Any]:
-        """
-        Open access gate
-
-        Args:
-            door_id: Door/gate number (usually 1)
-        """
-        # Try multiple approaches depending on device type
-
-        # Approach 1: Access Control door command
-        # NOTE: Some Hikvision ACS firmwares are picky about whitespace / XML declaration.
-        # Use a minimal one-line payload first.
+        """Open access gate (optional legacy behavior)."""
         xml_body = "<RemoteControlDoor><cmd>open</cmd></RemoteControlDoor>"
 
         result = await self._request(
             "PUT",
             f"/ISAPI/AccessControl/RemoteControl/door/{door_id}",
-            xml_body
+            xml_body,
         )
-
         if result.get("success"):
-            logger.info(f"Gate {door_id} opened via AccessControl")
             return {"success": True, "method": "access_control"}
 
-        # Approach 1b: Access Control door command (ISAPI v2 namespace; required by some panels)
-        xml_body_v2 = (
-            "<RemoteControlDoor version='2.0' xmlns='http://www.isapi.org/ver20/XMLSchema'>"
-            "<cmd>open</cmd>"
-            "</RemoteControlDoor>"
+        # Fallback: curl digest (some firmwares behave better)
+        try:
+            url = f"{self.base_url}/ISAPI/AccessControl/RemoteControl/door/{door_id}"
+            proc = await asyncio.create_subprocess_exec(
+                "curl",
+                "--silent",
+                "--show-error",
+                "--digest",
+                "-u",
+                f"{self.username}:{self.password}",
+                "-X",
+                "PUT",
+                "-H",
+                "Content-Type: application/xml",
+                "--data",
+                xml_body,
+                "--max-time",
+                str(self.timeout),
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code}",
+                url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await proc.communicate()
+            code = (out or b"").decode("utf-8", errors="ignore").strip()
+            if code in ("200", "204"):
+                return {"success": True, "method": "curl_digest"}
+            return {"success": False, "error": f"curl http_code={code}", "stderr": err.decode('utf-8', errors='ignore')[:200]}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def create_user_and_card(
+        self,
+        *,
+        employee_no: str,
+        name: str,
+        begin_time: str,
+        end_time: str,
+        card_no: str,
+        door_right: str = "1",
+    ) -> Dict[str, Any]:
+        """Provision a person and assign a card/QR credential.
+
+        Mirrors the proven production flow in Documents\ISAPI\v.1\api.php.
+        Times are expected as local strings: YYYY-MM-DDTHH:MM:SS
+        """
+        user_data = {
+            "UserInfo": {
+                "employeeNo": employee_no,
+                "name": name,
+                "userType": "normal",
+                "doorRight": door_right,
+                "RightPlan": [{"doorNo": 1, "planTemplateNo": "1"}],
+                "gender": "male",
+                "Valid": {
+                    "enable": True,
+                    "beginTime": begin_time,
+                    "endTime": end_time,
+                    "timeType": "local",
+                },
+            }
+        }
+
+        import json as _json
+        r1 = await self._request(
+            "POST",
+            "/ISAPI/AccessControl/UserInfo/Record?format=json",
+            data=_json.dumps(user_data),
+            content_type="application/json",
         )
 
-        result = await self._request(
-            "PUT",
-            f"/ISAPI/AccessControl/RemoteControl/door/{door_id}",
-            xml_body_v2
+        card_data = {
+            "CardInfo": {
+                "employeeNo": employee_no,
+                "cardNo": card_no,
+                "cardType": "normalCard",
+                "cardValid": {
+                    "enable": True,
+                    "beginTime": begin_time,
+                    "endTime": end_time,
+                    "timeType": "local",
+                },
+            }
+        }
+
+        r2 = await self._request(
+            "POST",
+            "/ISAPI/AccessControl/CardInfo/Record?format=json",
+            data=_json.dumps(card_data),
+            content_type="application/json",
         )
 
-        if result.get("success"):
-            logger.info(f"Gate {door_id} opened via AccessControl (v2)")
-            return {"success": True, "method": "access_control_v2"}
+        def _status_ok(resp: Dict[str, Any]) -> bool:
+            if not resp.get("success"):
+                return False
+            body = resp.get("body") or ""
+            try:
+                j = _json.loads(body)
+                # Many ISAPI JSON responses include {"statusCode": 1, "statusString": "OK"}
+                if isinstance(j, dict) and (j.get("statusCode") in (1, "1")):
+                    return True
+            except Exception:
+                pass
+            # Fallback: accept HTTP 200/204
+            return True
 
-        # Approach 2: IO Trigger (for cameras with alarm output)
-        result = await self._request(
-            "PUT",
-            f"/ISAPI/System/IO/outputs/{door_id}/trigger"
-        )
+        ok = _status_ok(r1) and _status_ok(r2)
+        return {"success": ok, "user": r1, "card": r2}
 
-        if result.get("success"):
-            logger.info(f"Gate {door_id} opened via IO trigger")
-            return {"success": True, "method": "io_trigger"}
-
-        # Approach 3: Alarm output
-        xml_body = """<?xml version="1.0" encoding="UTF-8"?>
-        <IOOutputPort>
-            <outputState>active</outputState>
-        </IOOutputPort>"""
-
-        result = await self._request(
-            "PUT",
-            f"/ISAPI/System/IO/outputs/{door_id}",
-            xml_body
-        )
-
-        if result.get("success"):
-            logger.info(f"Gate {door_id} opened via alarm output")
-            return {"success": True, "method": "alarm_output"}
-
-        logger.error(f"Failed to open gate {door_id}")
-        return {"success": False, "error": "All methods failed"}
 
     async def close_gate(self, door_id: int = 1) -> Dict[str, Any]:
         """Close access gate (if supported)"""

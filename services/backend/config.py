@@ -8,16 +8,24 @@ class Settings(BaseSettings):
 
     # Sitnova default device mapping (override per-tenant later via DB settings)
     hik_user: str = "admin"
-    hik_pass_default: str = ""  # panel (.3) and biometric (.136)
-    hik_pass_pedestrian: str = ""  # pedestrian device (.1)
 
-    hik_panel_host: str = "172.20.22.3"
-    hik_panel_port: int = 80
+    # Biometrics that will validate QR locally
+    hik_bio1_host: str = "172.20.22.1"
+    hik_bio1_port: int = 80
+    hik_bio1_password: str = ""  # .1 uses Integratec20
 
-    hik_pedestrian_host: str = "172.20.22.1"
-    hik_pedestrian_port: int = 80
+    hik_bio2_host: str = "172.20.22.136"
+    hik_bio2_port: int = 80
+    hik_bio2_password: str = ""  # .136 uses integratec20
 
     hik_timeout_seconds: float = 3.0
+
+    # QR credential parameters (Hikvision CardInfo)
+    qr_card_digits: int = 10
+    qr_employee_prefix: str = "V"  # employeeNo must be string
+
+    # Timezone for provisioning validity windows to devices (local time expected)
+    condo_timezone: str = "America/Costa_Rica"
 
     class Config:
         env_file = ".env"

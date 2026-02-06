@@ -15,7 +15,8 @@ from __future__ import annotations
 import base64
 import io
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional, List
 from uuid import UUID
 
@@ -30,6 +31,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from infrastructure.database import get_session
 from domain.models import Condominium, Visitor
+from infrastructure.hikvision.client import HikvisionGateClient
 from domain.models.access_credential import AccessCredential
 from domain.models.qr_token import QrToken
 from domain.models.audit_log import AuditLog
@@ -68,9 +70,17 @@ class IssueVisitQrResponse(BaseModel):
     credential_id: UUID
     qr_token_id: UUID
 
+    # What the visitor will present to the biometric reader (encoded in the QR image)
+    card_no: str
+    employee_no: str
+
+    # Legacy fields (kept for compatibility)
     token: str
     token_url: str
     expires_at: datetime
+
+    provisioned: bool
+    provisioned_devices: List[str] = Field(default_factory=list)
 
     # convenience: return a branded PNG card
     card_png_base64: str
@@ -96,6 +106,34 @@ def _validate_access_points(points: List[str]) -> List[str]:
         if p not in out:
             out.append(p)
     return out
+
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Normalize datetime for DB columns defined as TIMESTAMP WITHOUT TIME ZONE.
+
+    If an aware datetime is provided, convert to UTC and drop tzinfo.
+    If naive, assume it's already in UTC.
+    """
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _format_local(dt: datetime, tz: str) -> str:
+    z = ZoneInfo(tz)
+    if dt.tzinfo is None:
+        # assume already local
+        local = dt.replace(tzinfo=z)
+    else:
+        local = dt.astimezone(z)
+    # ISAPI expects local string without offset
+    return local.replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _random_digits(n: int) -> str:
+    # Avoid leading zeros being dropped by consumers; still allowed.
+    alphabet = "0123456789"
+    return "".join(secrets.choice(alphabet) for _ in range(n))
 
 
 def _make_qr_png(data: str) -> bytes:
@@ -235,8 +273,13 @@ async def issue_visit_qr(
     allowed = _validate_access_points(req.allowed_access_points)
 
     now = datetime.utcnow()
-    valid_from = req.valid_from or now
-    if req.valid_until <= valid_from:
+
+    # Normalize datetimes (avoid mixing tz-aware vs tz-naive with TIMESTAMP WITHOUT TIME ZONE)
+    valid_from_in = req.valid_from or now
+    valid_from = _to_naive_utc(valid_from_in)
+    valid_until = _to_naive_utc(req.valid_until)
+
+    if valid_until <= valid_from:
         raise HTTPException(status_code=400, detail="valid_until must be after valid_from")
 
     # Create visitor
@@ -245,7 +288,7 @@ async def issue_visit_qr(
         resident_id=req.resident_id,
         name=req.visitor_name,
         vehicle_plate=req.vehicle_plate,
-        valid_until=req.valid_until,
+        valid_until=valid_until,
         authorization_type=req.authorization_type,
         allowed_access_points=allowed,
         authorized_by="resident",
@@ -263,7 +306,7 @@ async def issue_visit_qr(
         credential_type="qr",
         allowed_access_points=allowed,
         valid_from=valid_from,
-        valid_until=req.valid_until,
+        valid_until=valid_until,
         max_uses=req.max_uses,
         provisioning_mode="device",  # target: eventually provision into Hikvision
         device_target={},
@@ -272,7 +315,61 @@ async def issue_visit_qr(
     session.add(credential)
     await session.flush()
 
-    # Create token
+    # --- Provision QR credential into biometrics (.1 and .136) ---
+    # employeeNo must be unique per device; we keep it human-readable.
+    employee_no = f"{app_settings.qr_employee_prefix}{visitor.id.hex[:10]}"
+
+    # cardNo must be numeric and (ideally) non-repeating.
+    # We'll attempt a few times in case of collisions.
+    card_no: Optional[str] = None
+    provisioned_devices: List[str] = []
+    provisioned_ok = False
+
+    begin_time_local = _format_local(valid_from, app_settings.condo_timezone)
+    end_time_local = _format_local(valid_until, app_settings.condo_timezone)
+
+    for _ in range(10):
+        candidate = _random_digits(int(app_settings.qr_card_digits))
+
+        bio1 = HikvisionGateClient(
+            host=app_settings.hik_bio1_host,
+            port=app_settings.hik_bio1_port,
+            username=app_settings.hik_user,
+            password=app_settings.hik_bio1_password,
+        )
+        bio2 = HikvisionGateClient(
+            host=app_settings.hik_bio2_host,
+            port=app_settings.hik_bio2_port,
+            username=app_settings.hik_user,
+            password=app_settings.hik_bio2_password,
+        )
+
+        r1 = await bio1.create_user_and_card(
+            employee_no=employee_no,
+            name=req.visitor_name,
+            begin_time=begin_time_local,
+            end_time=end_time_local,
+            card_no=candidate,
+        )
+        r2 = await bio2.create_user_and_card(
+            employee_no=employee_no,
+            name=req.visitor_name,
+            begin_time=begin_time_local,
+            end_time=end_time_local,
+            card_no=candidate,
+        )
+
+        # If provisioning fails, try another card number.
+        if r1.get("success") and r2.get("success"):
+            card_no = candidate
+            provisioned_ok = True
+            provisioned_devices = [app_settings.hik_bio1_host, app_settings.hik_bio2_host]
+            break
+
+    if not provisioned_ok or not card_no:
+        raise HTTPException(status_code=502, detail="Failed to provision QR credential into biometric devices")
+
+    # Create token row for auditing/ops (not the QR payload presented to the reader)
     token = secrets.token_urlsafe(24)
     qr = QrToken(
         condominium_id=tenant_id,
@@ -281,9 +378,14 @@ async def issue_visit_qr(
         credential_id=credential.id,
         token=token,
         allowed_access_points=allowed,
-        expires_at=req.valid_until,
+        expires_at=valid_until,
         max_uses=req.max_uses,
-        extra_data={"visitor_name": req.visitor_name},
+        extra_data={
+            "visitor_name": req.visitor_name,
+            "employee_no": employee_no,
+            "card_no": card_no,
+            "provisioned_devices": provisioned_devices,
+        },
     )
     session.add(qr)
 
@@ -296,27 +398,29 @@ async def issue_visit_qr(
         action="issue_qr",
         resource_type="qr_token",
         resource_id=qr.id,
-        status="success",
-        message="QR issued",
+        status="success" if provisioned_ok else "failure",
+        message="QR issued and provisioned to biometrics",
         extra_data={
             "visitor_id": str(visitor.id),
             "credential_id": str(credential.id),
             "allowed_access_points": allowed,
-            "expires_at": req.valid_until.isoformat(),
+            "expires_at": valid_until.isoformat(),
             "max_uses": req.max_uses,
+            "employee_no": employee_no,
+            "card_no": card_no,
+            "provisioned_devices": provisioned_devices,
         },
     )
     session.add(audit)
 
-    # Render card
+    # Render card: QR encodes card_no (what the visitor presents)
     condo = await _get_condo(session, tenant_id)
-    qr_url = _token_url(token)
-    qr_png = _make_qr_png(qr_url)
+    qr_png = _make_qr_png(card_no)
     logo_bytes = await _maybe_fetch_logo_from_settings(condo)
     card_png = _render_card(
         condo_name=condo.name,
         visitor_name=req.visitor_name,
-        valid_until=req.valid_until,
+        valid_until=valid_until,
         allowed_access_points=allowed,
         qr_png=qr_png,
         logo_bytes=logo_bytes,
@@ -330,8 +434,12 @@ async def issue_visit_qr(
         visitor_id=visitor.id,
         credential_id=credential.id,
         qr_token_id=qr.id,
+        card_no=card_no,
+        employee_no=employee_no,
         token=token,
-        token_url=qr_url,
-        expires_at=req.valid_until,
+        token_url=_token_url(token),
+        expires_at=valid_until,
+        provisioned=provisioned_ok,
+        provisioned_devices=provisioned_devices,
         card_png_base64=card_b64,
     )

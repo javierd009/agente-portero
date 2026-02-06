@@ -51,6 +51,25 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
       - JWT_SECRET=${JWT_SECRET}
+
+      # Backend public base URL (for QR landing links)
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://api-portero.integratec-ia.com}
+
+      # Hikvision (biometrics that validate QR locally)
+      - HIK_USER=${HIK_USER:-admin}
+      - HIK_BIO1_HOST=${HIK_BIO1_HOST:-172.20.22.1}
+      - HIK_BIO1_PORT=${HIK_BIO1_PORT:-80}
+      - HIK_BIO1_PASSWORD=${HIK_BIO1_PASSWORD}
+      - HIK_BIO2_HOST=${HIK_BIO2_HOST:-172.20.22.136}
+      - HIK_BIO2_PORT=${HIK_BIO2_PORT:-80}
+      - HIK_BIO2_PASSWORD=${HIK_BIO2_PASSWORD}
+      - HIK_TIMEOUT_SECONDS=${HIK_TIMEOUT_SECONDS:-3}
+
+      # QR provisioning behavior
+      - QR_CARD_DIGITS=${QR_CARD_DIGITS:-10}
+      - QR_EMPLOYEE_PREFIX=${QR_EMPLOYEE_PREFIX:-V}
+      - CONDO_TIMEZONE=${CONDO_TIMEZONE:-America/Costa_Rica}
+
       - EVOLUTION_API_URL=${EVOLUTION_API_URL:-http://evolution-api:8080}
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
       - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-agente-portero}
