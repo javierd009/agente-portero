@@ -14,6 +14,7 @@ from . import (
     qr_landing,
     qr_ops,
     audit,
+    intercom,
 )
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "qr_landing",
     "qr_ops",
     "audit",
+    "intercom",
 ]

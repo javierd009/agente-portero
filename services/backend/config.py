@@ -20,6 +20,11 @@ class Settings(BaseSettings):
 
     hik_timeout_seconds: float = 3.0
 
+    # Panel/controller (vehicular) for RemoteControlDoor
+    hik_panel_host: str = "172.20.22.3"
+    hik_panel_port: int = 80
+    hik_panel_password: str = ""  # panel uses integratec20
+
     # QR credential parameters (Hikvision CardInfo)
     qr_card_digits: int = 10
     qr_employee_prefix: str = "V"  # employeeNo must be string

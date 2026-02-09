@@ -12,6 +12,7 @@ from .report import Report
 from .access_credential import AccessCredential
 from .qr_token import QrToken
 from .audit_log import AuditLog
+from .telephony_extension import TelephonyExtension
 
 __all__ = [
     "Condominium",
@@ -27,4 +28,5 @@ __all__ = [
     "AccessCredential",
     "QrToken",
     "AuditLog",
+    "TelephonyExtension",
 ]

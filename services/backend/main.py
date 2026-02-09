@@ -26,6 +26,7 @@ from api.v1 import (
     qr_landing,
     qr_ops,
     audit,
+    intercom,
 )
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -86,6 +87,9 @@ app.include_router(qr_ops.router, prefix="/api/v1/qr", tags=["qr-ops"])
 
 # Audit / Bitácora (internal)
 app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
+
+# Intercom / FreePBX (internal)
+app.include_router(intercom.router, prefix="/api/v1/intercom", tags=["intercom"])
 
 @app.get("/health")
 async def health_check():
